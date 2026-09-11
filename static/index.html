@@ -445,11 +445,12 @@
   .inbox-log-item .pending { color: var(--say); }
 
   /* gallery / submissions / rejected grid */
-  .piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 16px; }
   .piece-card {
     background: linear-gradient(180deg, var(--e1), transparent 30%), var(--panel);
     border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-1);
     transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease;
+    cursor: zoom-in;
   }
   .piece-card:hover { border-color: #3a4560; box-shadow: var(--shadow-2); transform: translateY(-2px); }
   .piece-card .piece-head {
@@ -487,8 +488,8 @@
     98% { filter: brightness(1.02); }
   }
   .piece-card pre {
-    margin: 0; padding: 10px 12px; font-size: 9.5px; line-height: 1.15; white-space: pre; overflow-x: auto;
-    max-height: 340px; overflow-y: auto; color: #cfe0ff; background: #05070a;
+    margin: 0; padding: 12px 14px; font-size: 11.5px; line-height: 1.15; white-space: pre; overflow-x: auto;
+    max-height: 480px; overflow-y: auto; color: #cfe0ff; background: #05070a;
     font-family: "SF Mono", Menlo, monospace;
   }
   .piece-card .piece-sidecar { padding: 8px 12px; font-size: 10.5px; border-top: 1px solid var(--border); }
@@ -496,10 +497,54 @@
   .piece-card .piece-sidecar.critique-accept { color: var(--accept); }
   .piece-card .piece-sidecar.critique-reject { color: var(--reject); }
   .piece-card pre.ansi-render { font-weight: 600; letter-spacing: 0; }
+  .piece-card .expand-hint {
+    position: absolute; top: 8px; right: 10px; z-index: 3; font-size: 9px; color: rgba(255,255,255,.55);
+    font-family: var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .04em;
+    background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 6px; opacity: 0;
+    transition: opacity .15s ease; pointer-events: none;
+  }
+  .crt-screen:hover .expand-hint { opacity: 1; }
+
+  /* fullscreen lightbox for viewing a piece at real size */
+  .lightbox-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(2,3,6,.88);
+    backdrop-filter: blur(6px); align-items: center; justify-content: center; padding: 40px;
+    animation: lightboxIn .18s ease;
+  }
+  .lightbox-overlay.open { display: flex; }
+  @keyframes lightboxIn { from { opacity: 0; } to { opacity: 1; } }
+  .lightbox-box {
+    max-width: 94vw; max-height: 90vh; background: #05070a; border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-3); display: flex; flex-direction: column;
+  }
+  .lightbox-head {
+    padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); font-family: var(--hermes-font-sans);
+    background: linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+  }
+  .lightbox-head .name { font-weight: 700; font-size: 13px; color: var(--fg); }
+  .lightbox-close {
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted); cursor: pointer;
+    border-radius: 7px; padding: 4px 10px; font-size: 11px; font-family: var(--hermes-font-sans);
+    transition: all .15s ease;
+  }
+  .lightbox-close:hover { color: #ff6e6e; border-color: #ff6e6e; }
+  .lightbox-body { overflow: auto; padding: 20px; }
+  .lightbox-body pre { margin: 0; font-size: 17px; line-height: 1.15; font-family: "SF Mono", Menlo, monospace; white-space: pre; }
   .piece-card pre.ansi-render span { display: inline; }
 </style>
 </head>
 <body>
+
+<div class="lightbox-overlay" id="lightbox" onclick="if(event.target===this) closeLightbox()">
+  <div class="lightbox-box">
+    <div class="lightbox-head">
+      <span class="name" id="lightbox-name"></span>
+      <button class="lightbox-close" onclick="closeLightbox()">✕ Close</button>
+    </div>
+    <div class="lightbox-body crt-screen" id="lightbox-body"></div>
+  </div>
+</div>
 
 <h1><span class="ant-emoji">🖥️</span> AGENTSCII <span class="live-dot"></span></h1>
 <div class="h1-accent"></div>
@@ -939,6 +984,7 @@ function renderPieceGrid(container, pieces, kind) {
     container.innerHTML = `<div class="empty">nothing here yet</div>`;
     return;
   }
+  lightboxPieces = []; // reset each render — stale entries' DOM nodes are gone anyway
   container.innerHTML = pieces.map(p => {
     const sidecarClass = kind === "unpacked" || kind === "pack" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
     const cardClass = kind === "unpacked" || kind === "pack" ? "led-accept" : kind === "rejected" ? "led-reject" : "";
@@ -949,7 +995,8 @@ function renderPieceGrid(container, pieces, kind) {
     const isAnsi = /\.(ans|asc)$/i.test(p.path);
     let bodyHtml;
     if (isAnsi && p.rendered_html) {
-      bodyHtml = `<div class="crt-screen"><pre class="ansi-render">${p.rendered_html}</pre></div>`;
+      const lbId = registerLightboxPiece(p.path, p.rendered_html);
+      bodyHtml = `<div class="crt-screen" onclick="openLightbox(${lbId})"><span class="expand-hint">⤢ click to enlarge</span><pre class="ansi-render">${p.rendered_html}</pre></div>`;
     } else if (isAnsi) {
       bodyHtml = `<pre>(couldn't render — binary/unreadable, view on disk)</pre>`;
     } else {
@@ -965,6 +1012,27 @@ function renderPieceGrid(container, pieces, kind) {
     </div>`;
   }).join("");
 }
+
+// Lightbox: fullscreen viewer for a piece's rendered ANSI art. Rendered HTML
+// is stored in a lookup keyed by an incrementing id rather than embedded in
+// an onclick attribute directly — these strings can be tens of KB and contain
+// characters that would break naive attribute-escaping.
+let lightboxPieces = [];
+function registerLightboxPiece(name, html) {
+  lightboxPieces.push({ name, html });
+  return lightboxPieces.length - 1;
+}
+function openLightbox(id) {
+  const piece = lightboxPieces[id];
+  if (!piece) return;
+  document.getElementById("lightbox-name").textContent = piece.name;
+  document.getElementById("lightbox-body").innerHTML = `<pre class="ansi-render">${piece.html}</pre>`;
+  document.getElementById("lightbox").classList.add("open");
+}
+function closeLightbox() {
+  document.getElementById("lightbox").classList.remove("open");
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeLightbox(); });
 
 async function refreshUnpacked() {
   const d = await fetchJSON("/api/gallery");
