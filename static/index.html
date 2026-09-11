@@ -178,11 +178,19 @@
   .tab-btn {
     padding: 7px 14px; border-radius: 9px; font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .03em; font-family: var(--hermes-font-sans);
-    border: 1px solid var(--border); cursor: pointer; background: var(--panel); color: var(--muted);
-    transition: all .15s ease;
+    border: 1px solid var(--border); cursor: pointer;
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel); color: var(--fg);
+    transition: all .15s ease; position: relative; overflow: hidden;
   }
-  .tab-btn:hover { color: var(--fg); border-color: #3a4560; }
-  .tab-btn.active { color: var(--fg); border-color: var(--accent); background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel); box-shadow: 0 0 10px -2px var(--accent); }
+  .tab-btn:hover { color: var(--fg); border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 0 10px -3px var(--accent); }
+  .tab-btn.active { color: var(--bg); border-color: var(--accent); background: var(--accent); box-shadow: 0 0 14px -2px var(--accent), var(--shadow-2); font-weight: 700; }
+  .tab-btn::after {
+    content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent);
+    transform: skewX(-20deg); pointer-events: none;
+  }
+  .tab-btn:hover::after { animation: shineSweep .8s ease; }
+  @keyframes shineSweep { from { left: -60%; } to { left: 130%; } }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
@@ -377,20 +385,29 @@
   .control-pill.flagged .dot { background: var(--say); }
   .control-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .ctl-btn {
-    padding: 8px 4px; border-radius: 8px; font-size: 10.5px; font-weight: 600;
+    padding: 9px 4px; border-radius: 8px; font-size: 10.5px; font-weight: 700;
     font-family: var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .02em;
-    border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
+    border: 1.5px solid var(--border); cursor: pointer; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; position: relative;
     background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
     color: var(--fg); transition: all .15s ease;
   }
+  .ctl-btn::after {
+    content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent);
+    transform: skewX(-20deg); pointer-events: none;
+  }
+  .ctl-btn:hover::after { animation: shineSweep .7s ease; }
   .ctl-btn.ctl-restart-dash { grid-column: 1 / -1; }
   .ctl-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
   .ctl-btn:active { transform: translateY(0); }
   .ctl-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
-  .ctl-btn.ctl-start:hover { border-color: var(--active-glow); color: var(--active-glow); }
-  .ctl-btn.ctl-stop:hover { border-color: #ff6e6e; color: #ff6e6e; }
-  .ctl-btn.ctl-restart:hover { border-color: var(--accent); color: var(--accent); }
+  .ctl-btn.ctl-start { border-color: var(--active-glow); color: var(--active-glow); background: linear-gradient(180deg, rgba(74,222,128,.12), rgba(74,222,128,.03)), var(--panel); }
+  .ctl-btn.ctl-start:hover { box-shadow: var(--shadow-2), 0 0 12px -2px var(--active-glow); }
+  .ctl-btn.ctl-stop { border-color: #ff6e6e; color: #ff6e6e; background: linear-gradient(180deg, rgba(255,110,110,.12), rgba(255,110,110,.03)), var(--panel); }
+  .ctl-btn.ctl-stop:hover { box-shadow: var(--shadow-2), 0 0 12px -2px #ff6e6e; }
+  .ctl-btn.ctl-restart { border-color: var(--accent); color: var(--accent); background: linear-gradient(180deg, rgba(184,146,255,.12), rgba(184,146,255,.03)), var(--panel); }
+  .ctl-btn.ctl-restart:hover { box-shadow: var(--shadow-2), 0 0 12px -2px var(--accent); }
   .control-msg { margin-top: 6px; font-size: 9.5px; color: var(--muted); min-height: 12px; line-height: 1.3; }
 
   /* inbox / prompt box */
@@ -409,11 +426,18 @@
   }
   #inbox-text:focus { outline: none; border-color: var(--accent); }
   #inbox-send {
-    padding: 7px; border-radius: 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .03em; font-family: var(--hermes-font-sans); border: 1px solid var(--accent);
-    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel); color: var(--accent); cursor: pointer;
+    padding: 8px; border-radius: 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .03em; font-family: var(--hermes-font-sans); border: 1.5px solid var(--accent);
+    background: linear-gradient(180deg, rgba(184,146,255,.18), rgba(184,146,255,.05)), var(--panel);
+    color: var(--accent); cursor: pointer; position: relative; overflow: hidden; transition: all .15s ease;
   }
-  #inbox-send:hover { box-shadow: 0 0 10px -2px var(--accent); }
+  #inbox-send::after {
+    content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.4), transparent);
+    transform: skewX(-20deg); pointer-events: none;
+  }
+  #inbox-send:hover::after { animation: shineSweep .7s ease; }
+  #inbox-send:hover { box-shadow: 0 0 12px -2px var(--accent); transform: translateY(-1px); }
   #inbox-send:disabled { opacity: .5; cursor: not-allowed; }
   .inbox-log-item { font-size: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
   .inbox-log-item .to { color: var(--accent); font-weight: 700; }
@@ -425,13 +449,43 @@
   .piece-card {
     background: linear-gradient(180deg, var(--e1), transparent 30%), var(--panel);
     border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-1);
+    transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease;
   }
+  .piece-card:hover { border-color: #3a4560; box-shadow: var(--shadow-2); transform: translateY(-2px); }
   .piece-card .piece-head {
     padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid var(--border); font-family: var(--hermes-font-sans);
+    background: linear-gradient(180deg, rgba(255,255,255,.03), transparent);
   }
-  .piece-card .piece-name { font-weight: 700; font-size: 12px; color: var(--fg); }
+  .piece-card .piece-name { font-weight: 700; font-size: 12px; color: var(--fg); display: flex; align-items: center; gap: 6px; }
+  .piece-card .piece-name::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 5px var(--accent); flex-shrink: 0; animation: pulse 2.4s infinite;
+  }
+  .piece-card.led-accept .piece-name::before { background: var(--accept); box-shadow: 0 0 5px var(--accept); }
+  .piece-card.led-reject .piece-name::before { background: var(--reject); box-shadow: 0 0 5px var(--reject); }
   .piece-card .piece-meta { font-size: 9.5px; color: var(--muted); }
+
+  /* CRT monitor chrome around rendered art — scanlines + vignette + subtle flicker,
+     applied only to the screen surface so the real ANSI colors stay legible. */
+  .crt-screen { position: relative; background: #05070a; overflow: hidden; animation: crtFlicker 7s infinite; }
+  .crt-screen pre { position: relative; z-index: 1; background: transparent !important; }
+  .crt-screen::before {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(255,255,255,.05) 0px, rgba(255,255,255,.05) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: overlay;
+  }
+  .crt-screen::after {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.5) 100%);
+    box-shadow: inset 0 0 40px rgba(0,0,0,.6);
+  }
+  @keyframes crtFlicker {
+    0%, 95%, 100% { filter: brightness(1); }
+    96% { filter: brightness(1.05); }
+    97% { filter: brightness(.96); }
+    98% { filter: brightness(1.02); }
+  }
   .piece-card pre {
     margin: 0; padding: 10px 12px; font-size: 9.5px; line-height: 1.15; white-space: pre; overflow-x: auto;
     max-height: 340px; overflow-y: auto; color: #cfe0ff; background: #05070a;
@@ -887,6 +941,7 @@ function renderPieceGrid(container, pieces, kind) {
   }
   container.innerHTML = pieces.map(p => {
     const sidecarClass = kind === "unpacked" || kind === "pack" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
+    const cardClass = kind === "unpacked" || kind === "pack" ? "led-accept" : kind === "rejected" ? "led-reject" : "";
     let sidecarHtml = "";
     if (p.credits) sidecarHtml += `<div class="piece-sidecar"><span class="label">Contributors</span><div>${escapeHtml(p.credits)}</div></div>`;
     if (p.note) sidecarHtml += `<div class="piece-sidecar"><span class="label">Artist note</span><div>${escapeHtml(p.note)}</div></div>`;
@@ -894,13 +949,13 @@ function renderPieceGrid(container, pieces, kind) {
     const isAnsi = /\.(ans|asc)$/i.test(p.path);
     let bodyHtml;
     if (isAnsi && p.rendered_html) {
-      bodyHtml = `<pre class="ansi-render">${p.rendered_html}</pre>`;
+      bodyHtml = `<div class="crt-screen"><pre class="ansi-render">${p.rendered_html}</pre></div>`;
     } else if (isAnsi) {
       bodyHtml = `<pre>(couldn't render — binary/unreadable, view on disk)</pre>`;
     } else {
       bodyHtml = `<pre>${escapeHtml((p.content || '').slice(0, 4000) || '(binary or unreadable — view on disk)')}</pre>`;
     }
-    return `<div class="piece-card">
+    return `<div class="piece-card ${cardClass}">
       <div class="piece-head">
         <span class="piece-name">${escapeHtml(p.path)}</span>
         <span class="piece-meta">${p.size}b · ${fmtAgo(p.mtime)}</span>
@@ -945,7 +1000,7 @@ async function refreshPacks() {
             <span class="piece-name">${escapeHtml(pc.path)}</span>
             <span class="piece-meta">${pc.size}b</span>
           </div>
-          <pre class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'ansi-render' : ''}">${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? pc.rendered_html : escapeHtml(pc.content || '(binary or unreadable)')}</pre>
+          <div class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'crt-screen' : ''}"><pre class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'ansi-render' : ''}">${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? pc.rendered_html : escapeHtml(pc.content || '(binary or unreadable)')}</pre></div>
         </div>
       `).join('')}</div>
     </div>
