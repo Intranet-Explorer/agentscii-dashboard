@@ -305,7 +305,7 @@ def control_start():
     if status["watchdog_running"]:
         return {"ok": True, "message": "watchdog already running"}
     subprocess.Popen(
-        ["nohup", "bash", "watchdog.sh"],
+        ["nohup", "bash", str(PROJECT_DIR / "watchdog.sh")],
         cwd=str(PROJECT_DIR),
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
