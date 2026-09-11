@@ -454,8 +454,9 @@
     <div class="status-left">
       <span class="agent-avatar artist"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
       <div class="agent-id">
-        <span class="agent-name artist">ARTIST</span>
+        <span class="agent-name artist" id="handle-artist">ARTIST</span>
         <span class="agent-model" id="model-artist"></span>
+        <span class="agent-model" id="seat-artist" style="opacity:.6;">artist seat</span>
       </div>
     </div>
     <div class="status-right">
@@ -467,8 +468,9 @@
     <div class="status-left">
       <span class="agent-avatar curator"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
       <div class="agent-id">
-        <span class="agent-name curator">CURATOR</span>
+        <span class="agent-name curator" id="handle-curator">CURATOR</span>
         <span class="agent-model" id="model-curator"></span>
+        <span class="agent-model" id="seat-curator" style="opacity:.6;">curator seat</span>
       </div>
     </div>
     <div class="status-right">
@@ -484,7 +486,8 @@
 
 <div class="tabs">
   <button class="tab-btn active" data-tab="live" onclick="switchTab('live')">Live shifts</button>
-  <button class="tab-btn" data-tab="gallery" onclick="switchTab('gallery')">Gallery</button>
+  <button class="tab-btn" data-tab="unpacked" onclick="switchTab('unpacked')">Unpacked</button>
+  <button class="tab-btn" data-tab="packs" onclick="switchTab('packs')">Packs</button>
   <button class="tab-btn" data-tab="submissions" onclick="switchTab('submissions')">Submissions</button>
   <button class="tab-btn" data-tab="rejected" onclick="switchTab('rejected')">Rejected</button>
 </div>
@@ -546,8 +549,12 @@
 </div>
 </div>
 
-<div class="tab-panel" id="tab-gallery">
-  <div class="piece-grid" id="gallery-grid"><div class="empty">loading…</div></div>
+<div class="tab-panel" id="tab-unpacked">
+  <div class="piece-grid" id="unpacked-grid"><div class="empty">loading…</div></div>
+</div>
+
+<div class="tab-panel" id="tab-packs">
+  <div id="packs-list"><div class="empty">loading…</div></div>
 </div>
 
 <div class="tab-panel" id="tab-submissions">
@@ -594,7 +601,8 @@ function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
-  if (tab === "gallery") refreshGallery();
+  if (tab === "unpacked") refreshUnpacked();
+  if (tab === "packs") refreshPacks();
   if (tab === "submissions") refreshSubmissions();
   if (tab === "rejected") refreshRejected();
 }
@@ -652,6 +660,11 @@ async function refreshStatus() {
     const card = document.getElementById(`status-${agent}`);
     const pill = document.getElementById(`pill-${agent}`);
     const meta = document.getElementById(`meta-${agent}`);
+    const handleEl = document.getElementById(`handle-${agent}`);
+    const seatEl = document.getElementById(`seat-${agent}`);
+    const seatLabel = agent.toUpperCase();
+    handleEl.textContent = s.handle ? s.handle : seatLabel;
+    seatEl.style.display = s.handle ? "" : "none";
     if (s.active) {
       card.classList.add("active");
       pill.className = "status-pill active";
@@ -849,9 +862,10 @@ async function refreshCurationFeed() {
   }
   const recent = events.slice(-20).reverse();
   container.innerHTML = recent.map(e => {
-    const color = e.action === "accept" ? "var(--accept)" : e.action === "reject" ? "var(--reject)" : "var(--muted)";
+    const color = e.action === "accept" ? "var(--accept)" : e.action === "reject" ? "var(--reject)" : e.action === "release_pack" ? "var(--accent)" : "var(--muted)";
+    const label = e.action === "release_pack" ? "PACK RELEASED" : e.action.toUpperCase();
     return `<div class="comms-item" style="border-color:${color};">
-      <div class="comms-head" style="color:${color};">${e.action.toUpperCase()} · ${fmtTime(e.timestamp)}</div>
+      <div class="comms-head" style="color:${color};">${label} · ${fmtTime(e.timestamp)}</div>
       <div class="comms-body"><b>${escapeHtml(e.path)}</b>${e.dest_path ? ' → ' + escapeHtml(e.dest_path) : ''}<br>${escapeHtml((e.note||'').slice(0,250))}</div>
     </div>`;
   }).join("");
@@ -863,8 +877,9 @@ function renderPieceGrid(container, pieces, kind) {
     return;
   }
   container.innerHTML = pieces.map(p => {
-    const sidecarClass = kind === "gallery" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
+    const sidecarClass = kind === "unpacked" || kind === "pack" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
     let sidecarHtml = "";
+    if (p.credits) sidecarHtml += `<div class="piece-sidecar"><span class="label">Contributors</span><div>${escapeHtml(p.credits)}</div></div>`;
     if (p.note) sidecarHtml += `<div class="piece-sidecar"><span class="label">Artist note</span><div>${escapeHtml(p.note)}</div></div>`;
     if (p.critique) sidecarHtml += `<div class="piece-sidecar ${sidecarClass}"><span class="label">Curator critique</span><div>${escapeHtml(p.critique)}</div></div>`;
     return `<div class="piece-card">
@@ -878,9 +893,9 @@ function renderPieceGrid(container, pieces, kind) {
   }).join("");
 }
 
-async function refreshGallery() {
+async function refreshUnpacked() {
   const d = await fetchJSON("/api/gallery");
-  renderPieceGrid(document.getElementById("gallery-grid"), d.pieces || [], "gallery");
+  renderPieceGrid(document.getElementById("unpacked-grid"), d.pieces || [], "unpacked");
 }
 async function refreshSubmissions() {
   const d = await fetchJSON("/api/submissions");
@@ -889,6 +904,30 @@ async function refreshSubmissions() {
 async function refreshRejected() {
   const d = await fetchJSON("/api/rejected");
   renderPieceGrid(document.getElementById("rejected-grid"), d.pieces || [], "rejected");
+}
+async function refreshPacks() {
+  const d = await fetchJSON("/api/packs");
+  const packs = d.packs || [];
+  const container = document.getElementById("packs-list");
+  if (!packs.length) {
+    container.innerHTML = `<div class="empty">no packs shipped yet — accepted pieces wait in Unpacked until the curator ships a release</div>`;
+    return;
+  }
+  container.innerHTML = packs.map(p => `
+    <div class="sidebar-card" style="margin-bottom:16px;">
+      <h2>${escapeHtml(p.name)} <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:10px;">· ${fmtAgo(p.mtime)}</span></h2>
+      <pre style="background:#05070a;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:10.5px;white-space:pre-wrap;color:#cfe0ff;margin:0 0 12px;">${escapeHtml(p.file_id_diz || '(no FILE_ID.DIZ)')}</pre>
+      <div class="piece-grid">${(p.pieces||[]).map(pc => `
+        <div class="piece-card">
+          <div class="piece-head">
+            <span class="piece-name">${escapeHtml(pc.path)}</span>
+            <span class="piece-meta">${pc.size}b</span>
+          </div>
+          <pre>${escapeHtml(pc.content || '(binary or unreadable)')}</pre>
+        </div>
+      `).join('')}</div>
+    </div>
+  `).join("");
 }
 
 async function refreshControlStatus() {
@@ -953,7 +992,8 @@ async function refreshAll() {
       refreshInboxLog(),
       refreshControlStatus(),
     ]);
-    if (currentTab === "gallery") await refreshGallery();
+    if (currentTab === "unpacked") await refreshUnpacked();
+    if (currentTab === "packs") await refreshPacks();
     if (currentTab === "submissions") await refreshSubmissions();
     if (currentTab === "rejected") await refreshRejected();
   } catch (e) {
