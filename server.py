@@ -7,12 +7,18 @@ prompt-box endpoint that writes to human_messages (the inbox pattern,
 delivered at shift start, never interrupting live inference); a Gallery
 tab split into unpacked/ (accepted, pending release) and shipped packNN/
 releases with real FILE_ID.DIZ credits; a Submissions/Rejected view with
-contributor credits sidecars; and self-chosen agent handles surfaced next
-to the functional artist/curator seat labels.
+contributor credits sidecars; self-chosen agent handles surfaced next
+to the functional artist/curator seat labels; a real ANSI-to-HTML
+renderer (SGR color codes -> styled spans, UTF-8/CP437-aware decoding)
+so pieces actually render as art instead of raw escaped text; and a
+live Scratch/WIP tab into workspace/scratch/ so in-progress pieces are
+visible while the agents are still working on them.
 """
 import sqlite3
 import json
 import os
+import re
+import html as html_mod
 import signal
 import subprocess
 import threading
@@ -40,6 +46,105 @@ AGENTS_MODEL = {
 }
 
 PORT = 8766  # antfarm2-dashboard already owns 8765
+
+ANSI_EXTS = (".ans", ".asc")
+
+# Classic 16-color DOS/CGA-style palette, matching the convention every
+# generator script in this project already uses (c(fg,bg): fg/bg 0-7 normal,
+# 8-15 bright via the 90-97/100-107 SGR range) — not the xterm defaults,
+# which read too muted for BBS-style block art.
+PALETTE = [
+    "#000000", "#aa0000", "#00aa00", "#aa5500",
+    "#0000aa", "#aa00aa", "#00aaaa", "#aaaaaa",
+    "#555555", "#ff5555", "#55ff55", "#ffff55",
+    "#5555ff", "#ff55ff", "#55ffff", "#ffffff",
+]
+
+_SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+
+
+def decode_ans_bytes(raw):
+    """.ans/.asc files in this project are UTF-8 (every generator script
+    writes real Unicode block chars), but real period pieces fetched from
+    16colo.rs are genuine CP437 — support both rather than assuming."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp437", errors="replace")
+
+
+def ansi_to_html(text):
+    """Convert SGR-coded ANSI text into HTML: styled <span> runs, real
+    colors from PALETTE. Returns the inner HTML only — caller wraps it in
+    a <pre> with the right font/line-height."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    out = []
+    pos = 0
+    base_fg, bright_fg, base_bg = 7, False, 0
+    span_open = False
+
+    def style_attr():
+        fg_idx = (base_fg + 8) if bright_fg else base_fg
+        return f'style="color:{PALETTE[fg_idx % 16]};background-color:{PALETTE[base_bg % 16]}"'
+
+    def open_span():
+        nonlocal span_open
+        out.append(f"<span {style_attr()}>")
+        span_open = True
+
+    def close_span():
+        nonlocal span_open
+        if span_open:
+            out.append("</span>")
+            span_open = False
+
+    open_span()
+    for m in _SGR_RE.finditer(text):
+        chunk = text[pos:m.start()]
+        if chunk:
+            out.append(html_mod.escape(chunk))
+        pos = m.end()
+        codes = m.group(1)
+        params = [int(c) for c in codes.split(";") if c != ""] or [0]
+        changed = False
+        for p in params:
+            if p == 0:
+                base_fg, bright_fg, base_bg = 7, False, 0
+            elif p == 1:
+                bright_fg = True
+            elif p == 22:
+                bright_fg = False
+            elif p == 39:
+                base_fg, bright_fg = 7, False
+            elif p == 49:
+                base_bg = 0
+            elif 30 <= p <= 37:
+                base_fg = p - 30
+            elif 90 <= p <= 97:
+                base_fg, bright_fg = p - 90, True
+            elif 40 <= p <= 47:
+                base_bg = p - 40
+            elif 100 <= p <= 107:
+                base_bg = p - 100 + 8
+            changed = True
+        if changed:
+            close_span()
+            open_span()
+    tail = text[pos:]
+    if tail:
+        out.append(html_mod.escape(tail))
+    close_span()
+    return "".join(out)
+
+
+def render_ans_file(path):
+    try:
+        raw = path.read_bytes()
+        text = decode_ans_bytes(raw)
+        return ansi_to_html(text)
+    except Exception:
+        return None
+
 
 
 def get_db():
@@ -215,6 +320,8 @@ def _list_dir_files(d, with_content=False, max_bytes=20000):
                 entry["content"] = f.read_text(errors="replace")
             except Exception:
                 entry["content"] = None
+            if f.suffix.lower() in ANSI_EXTS:
+                entry["rendered_html"] = render_ans_file(f)
         out.append(entry)
     return out
 
@@ -257,7 +364,10 @@ def fetch_submissions():
 
 
 def fetch_scratch():
-    return _list_dir_files(SCRATCH_DIR, with_content=False)
+    """Live view of scratch/ WIP — .ans/.asc files render just like accepted
+    pieces (chafa-free, our own SGR renderer), other files (generator .py
+    scripts etc.) show as a text preview."""
+    return _list_dir_files(SCRATCH_DIR, with_content=True)
 
 
 def fetch_packs():
@@ -451,7 +561,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/scratch":
-            self._send_json({"files": fetch_scratch()})
+            self._send_json({"pieces": fetch_scratch()})
             return
 
         if parsed.path == "/api/inbox":

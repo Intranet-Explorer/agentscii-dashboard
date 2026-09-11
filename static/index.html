@@ -441,6 +441,8 @@
   .piece-card .piece-sidecar .label { color: var(--muted); text-transform: uppercase; font-size: 8.5px; letter-spacing: .04em; font-family: var(--hermes-font-sans); }
   .piece-card .piece-sidecar.critique-accept { color: var(--accept); }
   .piece-card .piece-sidecar.critique-reject { color: var(--reject); }
+  .piece-card pre.ansi-render { font-weight: 600; letter-spacing: 0; }
+  .piece-card pre.ansi-render span { display: inline; }
 </style>
 </head>
 <body>
@@ -488,6 +490,7 @@
   <button class="tab-btn active" data-tab="live" onclick="switchTab('live')">Live shifts</button>
   <button class="tab-btn" data-tab="unpacked" onclick="switchTab('unpacked')">Unpacked</button>
   <button class="tab-btn" data-tab="packs" onclick="switchTab('packs')">Packs</button>
+  <button class="tab-btn" data-tab="scratch" onclick="switchTab('scratch')">Scratch / WIP <span class="live-dot" style="width:6px;height:6px;margin-left:4px;"></span></button>
   <button class="tab-btn" data-tab="submissions" onclick="switchTab('submissions')">Submissions</button>
   <button class="tab-btn" data-tab="rejected" onclick="switchTab('rejected')">Rejected</button>
 </div>
@@ -557,6 +560,11 @@
   <div id="packs-list"><div class="empty">loading…</div></div>
 </div>
 
+<div class="tab-panel" id="tab-scratch">
+  <div class="sub" style="margin-bottom:10px;">Live WIP — whatever's currently in workspace/scratch/, unfiltered, no quality bar.</div>
+  <div class="piece-grid" id="scratch-grid"><div class="empty">loading…</div></div>
+</div>
+
 <div class="tab-panel" id="tab-submissions">
   <div class="piece-grid" id="submissions-grid"><div class="empty">loading…</div></div>
 </div>
@@ -603,6 +611,7 @@ function switchTab(tab) {
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
   if (tab === "unpacked") refreshUnpacked();
   if (tab === "packs") refreshPacks();
+  if (tab === "scratch") refreshScratch();
   if (tab === "submissions") refreshSubmissions();
   if (tab === "rejected") refreshRejected();
 }
@@ -882,12 +891,21 @@ function renderPieceGrid(container, pieces, kind) {
     if (p.credits) sidecarHtml += `<div class="piece-sidecar"><span class="label">Contributors</span><div>${escapeHtml(p.credits)}</div></div>`;
     if (p.note) sidecarHtml += `<div class="piece-sidecar"><span class="label">Artist note</span><div>${escapeHtml(p.note)}</div></div>`;
     if (p.critique) sidecarHtml += `<div class="piece-sidecar ${sidecarClass}"><span class="label">Curator critique</span><div>${escapeHtml(p.critique)}</div></div>`;
+    const isAnsi = /\.(ans|asc)$/i.test(p.path);
+    let bodyHtml;
+    if (isAnsi && p.rendered_html) {
+      bodyHtml = `<pre class="ansi-render">${p.rendered_html}</pre>`;
+    } else if (isAnsi) {
+      bodyHtml = `<pre>(couldn't render — binary/unreadable, view on disk)</pre>`;
+    } else {
+      bodyHtml = `<pre>${escapeHtml((p.content || '').slice(0, 4000) || '(binary or unreadable — view on disk)')}</pre>`;
+    }
     return `<div class="piece-card">
       <div class="piece-head">
         <span class="piece-name">${escapeHtml(p.path)}</span>
         <span class="piece-meta">${p.size}b · ${fmtAgo(p.mtime)}</span>
       </div>
-      <pre>${escapeHtml(p.content || '(binary or unreadable — view on disk)')}</pre>
+      ${bodyHtml}
       ${sidecarHtml}
     </div>`;
   }).join("");
@@ -900,6 +918,10 @@ async function refreshUnpacked() {
 async function refreshSubmissions() {
   const d = await fetchJSON("/api/submissions");
   renderPieceGrid(document.getElementById("submissions-grid"), d.pieces || [], "submissions");
+}
+async function refreshScratch() {
+  const d = await fetchJSON("/api/scratch");
+  renderPieceGrid(document.getElementById("scratch-grid"), d.pieces || [], "scratch");
 }
 async function refreshRejected() {
   const d = await fetchJSON("/api/rejected");
@@ -923,7 +945,7 @@ async function refreshPacks() {
             <span class="piece-name">${escapeHtml(pc.path)}</span>
             <span class="piece-meta">${pc.size}b</span>
           </div>
-          <pre>${escapeHtml(pc.content || '(binary or unreadable)')}</pre>
+          <pre class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'ansi-render' : ''}">${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? pc.rendered_html : escapeHtml(pc.content || '(binary or unreadable)')}</pre>
         </div>
       `).join('')}</div>
     </div>
@@ -995,6 +1017,7 @@ async function refreshAll() {
     if (currentTab === "unpacked") await refreshUnpacked();
     if (currentTab === "packs") await refreshPacks();
     if (currentTab === "submissions") await refreshSubmissions();
+    if (currentTab === "scratch") await refreshScratch();
     if (currentTab === "rejected") await refreshRejected();
   } catch (e) {
     console.error(e);
