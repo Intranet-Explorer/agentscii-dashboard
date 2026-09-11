@@ -35,8 +35,8 @@ STOP_FLAG = PROJECT_DIR / "STOP"
 STATIC_DIR = Path(__file__).parent / "static"
 
 AGENTS_MODEL = {
-    "artist": "qwen3.8-27b-obliterated",
-    "curator": "qwen3.8-27b-obliterated",
+    "artist": "qwen3.8:27b-mlx",
+    "curator": "qwen3.8:27b-mlx",
 }
 
 PORT = 8766  # antfarm2-dashboard already owns 8765
