@@ -1,0 +1,70 @@
+AGENTSCII dashboard running at http://127.0.0.1:8766
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 54563)
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 683, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/Users/octo/agentscii-dashboard/server.py", line 337, in __init__
+    super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 660, in __init__
+    super().__init__(*args, **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 434, in handle
+    self.handle_one_request()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 422, in handle_one_request
+    method()
+  File "/Users/octo/agentscii-dashboard/server.py", line 445, in do_POST
+    result = post_human_message(data.get("to_agent", "both"), data.get("text", ""))
+  File "/Users/octo/agentscii-dashboard/server.py", line 181, in post_human_message
+    conn.execute(
+sqlite3.OperationalError: no such table: human_messages
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 54564)
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 683, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/Users/octo/agentscii-dashboard/server.py", line 337, in __init__
+    super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 660, in __init__
+    super().__init__(*args, **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 434, in handle
+    self.handle_one_request()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 422, in handle_one_request
+    method()
+  File "/Users/octo/agentscii-dashboard/server.py", line 426, in do_GET
+    self._send_json({"messages": fetch_human_inbox()})
+  File "/Users/octo/agentscii-dashboard/server.py", line 164, in fetch_human_inbox
+    rows = conn.execute(
+sqlite3.OperationalError: no such table: human_messages
+----------------------------------------
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 54584)
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 683, in process_request_thread
+    self.finish_request(request, client_address)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 360, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/Users/octo/agentscii-dashboard/server.py", line 337, in __init__
+    super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 660, in __init__
+    super().__init__(*args, **kwargs)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 747, in __init__
+    self.handle()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 434, in handle
+    self.handle_one_request()
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 422, in handle_one_request
+    method()
+  File "/Users/octo/agentscii-dashboard/server.py", line 445, in do_POST
+    result = post_human_message(data.get("to_agent", "both"), data.get("text", ""))
+  File "/Users/octo/agentscii-dashboard/server.py", line 181, in post_human_message
+    conn.execute(
+sqlite3.OperationalError: no such table: human_messages
+----------------------------------------

@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AGENTSCII — live viewer</title>
+<style>
+  :root {
+    --bg: #0a0d12;
+    --panel: #11151d;
+    --panel2: #0d1119;
+    --border: #212837;
+    --fg: #dbe3f0;
+    --muted: #6b7688;
+    --artist: #6ee7ff;
+    --curator: #ffb86e;
+    --user: #7c8aa5;
+    --think: #9d7cff;
+    --tool: #6ee69a;
+    --toolresult: #5fae82;
+    --say: #ffd166;
+    --comms: #ff6ec7;
+    --accent: #b892ff;
+    --active-glow: #4ade80;
+    --title-warm: #e8c47a;
+    --accept: #4ade80;
+    --reject: #ff6e6e;
+    --hermes-font-sans: "Segoe WPC", "Segoe UI", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", emoji;
+
+    --e1: rgba(255,255,255,.025);
+    --e2: rgba(255,255,255,.045);
+    --e3: rgba(255,255,255,.07);
+    --acrylic-blur: 18px;
+    --shadow-1: 0 1px 2px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.03) inset;
+    --shadow-2: 0 4px 16px -4px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.05) inset, 0 1px 0 rgba(255,255,255,.04) inset;
+    --shadow-3: 0 10px 32px -8px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.07) inset, 0 1px 0 rgba(255,255,255,.06) inset;
+  }
+  * { box-sizing: border-box; }
+  @font-face {
+    font-family: "Collapse";
+    src: url("fonts/Collapse-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+  }
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 15% -10%, rgba(110,231,255,.05), transparent 45%),
+      radial-gradient(circle at 90% 10%, rgba(255,184,110,.05), transparent 40%);
+    color: var(--fg);
+    font-family: -apple-system, "SF Mono", "Menlo", monospace;
+    margin: 0;
+    padding: 14px;
+    font-size: 13px;
+  }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a3244; border-radius: 6px; border: 2px solid var(--panel); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4560; }
+  * { scrollbar-width: thin; scrollbar-color: #2a3244 transparent; }
+  h1 {
+    font-size: 52px; margin: 0 0 2px 0; display:flex; align-items:center; gap:14px;
+    font-family: "Collapse", var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .01em;
+    line-height: 1;
+    text-shadow: 0 0 24px rgba(110,231,255,.25), 0 0 50px rgba(255,184,110,.12);
+  }
+  h1 .ant-emoji { font-size: 44px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+  h1 .live-dot { width: 11px; height: 11px; align-self: flex-start; margin-top: 10px; }
+  .h1-accent {
+    height: 4px; width: 110px; border-radius: 3px; margin: 8px 0 12px;
+    background: linear-gradient(90deg, var(--artist), var(--comms), var(--curator));
+    box-shadow: 0 0 10px rgba(184,146,255,.4);
+  }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; letter-spacing: .01em; }
+
+  .agent-status-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr 300px;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .status-card {
+    flex: 1;
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
+    backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    box-shadow: var(--shadow-2);
+    transition: box-shadow .5s ease, border-color .5s ease, background .5s ease, transform .2s ease;
+  }
+  .status-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
+  .status-card.active { border-color: var(--active-glow); box-shadow: var(--shadow-3), 0 0 18px -1px var(--active-glow); animation: cardGlow 2.2s ease-in-out infinite; }
+  @keyframes cardGlow {
+    0%,100% { box-shadow: var(--shadow-2), 0 0 12px -2px var(--active-glow); }
+    50% { box-shadow: var(--shadow-3), 0 0 22px 1px var(--active-glow); }
+  }
+  .status-left { display: flex; align-items: center; gap: 12px; }
+  .status-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+  .agent-avatar {
+    width: 44px; height: 44px; flex-shrink: 0; transition: transform .25s ease;
+    position: relative; display: flex; align-items: center; justify-content: center;
+    filter: drop-shadow(0 3px 6px rgba(0,0,0,.5));
+    animation: avatarWobble 3.4s ease-in-out infinite;
+  }
+  .agent-avatar .blob {
+    width: 44px; height: 44px;
+    border-radius: 50% / 58% 58% 42% 42%;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 2px solid rgba(255,255,255,.35);
+    box-shadow: inset 0 -6px 10px rgba(0,0,0,.22), inset 0 4px 8px rgba(255,255,255,.25);
+  }
+  .agent-avatar .eye {
+    width: 7px; height: 7px; border-radius: 50%; background: #1c1c1c;
+    box-shadow: inset 0 -1px 1px rgba(255,255,255,.4);
+    animation: agentBlink 4.5s ease-in-out infinite;
+  }
+  .agent-avatar .eye:nth-child(2) { animation-delay: .08s; }
+  @keyframes agentBlink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.12); }
+  }
+  @keyframes avatarWobble {
+    0%, 62%, 100% { transform: rotate(0deg); }
+    8% { transform: rotate(-6deg); }
+    16% { transform: rotate(5deg); }
+    24% { transform: rotate(-4deg); }
+    32% { transform: rotate(3deg); }
+    40% { transform: rotate(0deg); }
+  }
+  .agent-avatar.artist .blob { background: radial-gradient(circle at 32% 28%, #ecffff, var(--artist) 70%); }
+  .agent-avatar.curator .blob { background: radial-gradient(circle at 32% 28%, #fff3e2, var(--curator) 70%); }
+  .status-card.active .agent-avatar { transform: scale(1.15); }
+  .agent-name {
+    font-weight: 700; font-size: 20px; letter-spacing: .02em;
+    font-family: "Collapse", var(--hermes-font-sans);
+    text-transform: uppercase;
+  }
+  .agent-name.artist { color: var(--artist); }
+  .agent-name.curator { color: var(--curator); }
+  .agent-id { display: flex; flex-direction: column; gap: 1px; }
+  .agent-model { font-size: 9px; color: var(--muted); letter-spacing: .01em; }
+  .status-pill {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    font-family: var(--hermes-font-sans);
+    padding: 3px 9px; border-radius: 12px; font-weight: 600;
+  }
+  .status-pill.active { background: #10331f; color: var(--active-glow); }
+  .status-pill.idle { background: #1c2231; color: var(--muted); }
+  .status-model { color: var(--muted); font-size: 11px; }
+  .status-meta { color: var(--muted); font-size: 10px; text-align: right; font-family: var(--hermes-font-sans); }
+
+  .run-overview {
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
+    backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    box-shadow: var(--shadow-2);
+    transition: box-shadow .3s ease, transform .2s ease;
+  }
+  .run-overview:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
+  .run-overview .label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-family: var(--hermes-font-sans); }
+  .run-overview .value { font-size: 20px; font-weight: 700; font-family: "Collapse", var(--hermes-font-sans); display: flex; align-items: baseline; gap: 6px; }
+  .run-overview .value .split { color: var(--muted); font-size: 12px; font-weight: 400; font-family: var(--hermes-font-sans); }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tab-btn {
+    padding: 7px 14px; border-radius: 9px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .03em; font-family: var(--hermes-font-sans);
+    border: 1px solid var(--border); cursor: pointer; background: var(--panel); color: var(--muted);
+    transition: all .15s ease;
+  }
+  .tab-btn:hover { color: var(--fg); border-color: #3a4560; }
+  .tab-btn.active { color: var(--fg); border-color: var(--accent); background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel); box-shadow: 0 0 10px -2px var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 300px;
+    gap: 12px;
+    height: calc(100vh - 240px);
+  }
+  .panel {
+    background: linear-gradient(180deg, var(--e1), transparent 30%), var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    scroll-behavior: smooth;
+    box-shadow: var(--shadow-1);
+    transition: border-color .3s ease, box-shadow .3s ease;
+    position: relative;
+  }
+  .panel:hover { box-shadow: var(--shadow-2); }
+  .sidebar { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: hidden; }
+  .sidebar-card {
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
+    backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    -webkit-backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: var(--shadow-1);
+    transition: border-color .3s ease, box-shadow .3s ease, transform .2s ease;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .sidebar-card:hover { border-color: #2c374d; box-shadow: var(--shadow-2); transform: translateY(-1px); }
+  #control-card, #inbox-card { flex-shrink: 0; }
+  .sidebar-card::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.06), transparent 60%);
+    transition: opacity .25s ease;
+  }
+  .sidebar-card:hover::before { opacity: 1; }
+  .sidebar-card.grow { flex: 1; min-height: 120px; }
+  .sidebar-card h2 {
+    font-size: 12px;
+    font-family: "Collapse", var(--hermes-font-sans);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--title-warm);
+    margin: 0 0 8px 0;
+    flex-shrink: 0;
+  }
+  .sidebar-card-body { overflow-y: auto; min-height: 0; flex: 1; }
+  .sidebar-card-body.fixed-4 { max-height: 300px; }
+  .sidebar-card-body.fixed-sm { max-height: 130px; }
+  .sidebar-card-body.fixed-stats { max-height: 210px; }
+
+  .bubble-row { display: flex; margin-bottom: 10px; gap: 8px; align-items: flex-start; }
+  .mini-avatar {
+    width: 28px; height: 28px; flex-shrink:0; margin-top: 2px;
+    display:flex; align-items:center; justify-content:center;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,.4));
+  }
+  .mini-avatar .blob {
+    width: 28px; height: 28px;
+    border-radius: 50% / 58% 58% 42% 42%;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    border: 1.5px solid rgba(255,255,255,.3);
+    box-shadow: inset 0 -4px 7px rgba(0,0,0,.2), inset 0 3px 5px rgba(255,255,255,.22);
+  }
+  .mini-avatar .eye { width: 4.5px; height: 4.5px; border-radius: 50%; background: #1c1c1c; }
+  .mini-avatar.artist .blob { background: radial-gradient(circle at 32% 28%, #ecffff, var(--artist) 70%); }
+  .mini-avatar.curator .blob { background: radial-gradient(circle at 32% 28%, #fff3e2, var(--curator) 70%); }
+
+  .bubble {
+    max-width: calc(100% - 36px);
+    flex: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    box-shadow: var(--shadow-1);
+    transition: transform .15s ease, box-shadow .15s ease;
+    position: relative;
+  }
+  .bubble::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; z-index: 1;
+    background: radial-gradient(180px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.05), transparent 60%);
+    transition: opacity .25s ease;
+  }
+  .bubble:hover::before { opacity: 1; }
+  .bubble:hover { transform: translateX(2px); box-shadow: var(--shadow-2); }
+  .bubble-row.artist .bubble { border-left-color: var(--artist); }
+  .bubble-row.curator .bubble { border-left-color: var(--curator); }
+
+  .bubble-head {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    padding: 5px 10px; display:flex; align-items:center; gap: 6px; justify-content:space-between;
+  }
+  .bubble-head .kind { display:flex; align-items:center; gap:6px; }
+  .bubble-head .kind-emoji { font-size: 16px; line-height: 1; }
+  .bubble-body { padding: 8px 10px; font-size: 12px; white-space: pre-wrap; word-break: break-word; line-height:1.5; }
+  .bubble-time { font-weight: 400; opacity: 0.7; font-size: 9px; }
+
+  .bubble.think { background: #14102b; border-color: #2c2360; }
+  .bubble.think .bubble-head { background: #1a1638; color: var(--think); }
+  .bubble.think .bubble-body { color: #c3b3f0; font-style: italic; font-size: 11.5px; }
+  .bubble.action { background: #0d1912; border-color: #1c3524; }
+  .bubble.action .bubble-head { background: #10241a; color: var(--tool); }
+  .bubble.action .bubble-body { color: #9be0b8; font-family: monospace; font-size: 11px; }
+  .bubble.result { background: #0a1512; border-color: #17281f; }
+  .bubble.result .bubble-head { background: #0e1e18; color: var(--toolresult); }
+  .bubble.result .bubble-body { color: #8fbfa5; font-family: monospace; font-size: 10.5px; max-height:140px; overflow-y:auto; }
+  .bubble.say { background: #241d0d; border-color: #453a18; }
+  .bubble.say .bubble-head { background: #2c2410; color: var(--say); }
+  .bubble.say .bubble-body { color: #f0e0a8; font-weight: 500; }
+  .bubble.ping { background: #12151c; border-color: var(--border); opacity: .75; }
+  .bubble.ping .bubble-head { background: #171b24; color: var(--user); }
+  .bubble.ping .bubble-body { color: #9aa5b8; font-size: 11px; }
+
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(14px) scale(.97); filter: blur(2px); }
+    to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  .bubble-row.bubble-new { animation: bubbleIn .4s cubic-bezier(.22,1,.36,1); }
+  @keyframes popFlash {
+    0%   { box-shadow: var(--shadow-2), 0 0 0 0 rgba(255,255,255,0.4); }
+    60%  { box-shadow: var(--shadow-2), 0 0 0 8px rgba(255,255,255,0.08); }
+    100% { box-shadow: var(--shadow-1), 0 0 0 0 rgba(255,255,255,0); }
+  }
+  .bubble-row.bubble-latest .bubble { animation: popFlash 1.2s ease-out; }
+  .panel.agent-inactive { opacity: .82; filter: saturate(.85); transition: opacity .4s ease, filter .4s ease; }
+
+  .typing-row { display:flex; gap:8px; align-items:center; margin-top: 4px; opacity: .85; }
+  .typing-bubble { display:inline-flex; align-items:center; gap:4px; padding: 8px 12px; border-radius: 14px; background: #171c27; border: 1px solid var(--border); }
+  .typing-dot { width:6px; height:6px; border-radius:50%; background: var(--muted); animation: typingBounce 1.1s infinite ease-in-out; }
+  .typing-dot:nth-child(2) { animation-delay: .15s; }
+  .typing-dot:nth-child(3) { animation-delay: .3s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  .bubble-row.artist .typing-dot { background: var(--artist); }
+  .bubble-row.curator .typing-dot { background: var(--curator); }
+
+  .tick-divider { color: var(--muted); font-size: 9px; text-align:center; margin: 14px 0 8px; display:flex; align-items:center; gap:8px; }
+  .tick-divider::before, .tick-divider::after { content:""; flex:1; height:1px; background: var(--border); }
+
+  .comms-item { border: 1px solid var(--comms); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; background: #1a0f18; }
+  .comms-item.comms-new { animation: commsPulse 1.4s ease-out; }
+  @keyframes commsPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,110,199,0.6); background: #2a1522; }
+    100% { box-shadow: 0 0 0 12px rgba(255,110,199,0); background: #1a0f18; }
+  }
+  .comms-head { font-size: 10px; color: var(--comms); margin-bottom: 4px; font-weight:600; }
+  .comms-body { font-size: 11px; white-space: pre-wrap; }
+
+  .empty { color: var(--muted); font-style: italic; padding: 20px 10px; text-align: center; font-size: 12px; }
+
+  .stat-mini { display:flex; justify-content:space-between; padding: 3px 0; font-size:11px; }
+  .stat-block { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .stat-block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .stat-block-title { font-weight: 700; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; font-family: var(--hermes-font-sans); }
+  .bar-row { display:flex; align-items:center; gap:6px; font-size: 10px; margin: 4px 0; }
+  .bar-label { width: 76px; flex-shrink:0; color: var(--tool); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-track { flex:1; height: 6px; border-radius: 4px; background: #171c27; overflow:hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--tool), #a8ffcf); transition: width .5s ease; }
+  .bar-count { width: 20px; text-align:right; color: var(--muted); flex-shrink: 0; }
+
+  .file-item { padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 11px; }
+  .file-item .path { color: var(--accent); }
+  .timeline-item { font-size: 10px; color: var(--muted); padding: 2px 0; }
+
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--active-glow); display: inline-block; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .spinner { display:inline-block; width:9px; height:9px; border:2px solid var(--active-glow); border-top-color:transparent; border-radius:50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .control-status { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; font-size: 10px; }
+  .control-pill { padding: 3px 7px; border-radius: 10px; font-family: var(--hermes-font-sans); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .control-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .control-pill.up { color: var(--active-glow); border-color: var(--active-glow); }
+  .control-pill.up .dot { background: var(--active-glow); box-shadow: 0 0 6px var(--active-glow); }
+  .control-pill.down { color: var(--muted); }
+  .control-pill.down .dot { background: var(--muted); }
+  .control-pill.flagged { color: var(--say); border-color: var(--say); }
+  .control-pill.flagged .dot { background: var(--say); }
+  .control-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ctl-btn {
+    padding: 8px 4px; border-radius: 8px; font-size: 10.5px; font-weight: 600;
+    font-family: var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .02em;
+    border: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
+    color: var(--fg); transition: all .15s ease;
+  }
+  .ctl-btn.ctl-restart-dash { grid-column: 1 / -1; }
+  .ctl-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-2); }
+  .ctl-btn:active { transform: translateY(0); }
+  .ctl-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .ctl-btn.ctl-start:hover { border-color: var(--active-glow); color: var(--active-glow); }
+  .ctl-btn.ctl-stop:hover { border-color: #ff6e6e; color: #ff6e6e; }
+  .ctl-btn.ctl-restart:hover { border-color: var(--accent); color: var(--accent); }
+  .control-msg { margin-top: 6px; font-size: 9.5px; color: var(--muted); min-height: 12px; line-height: 1.3; }
+
+  /* inbox / prompt box */
+  #inbox-form { display: flex; flex-direction: column; gap: 6px; }
+  #inbox-target { display: flex; gap: 4px; }
+  .target-btn {
+    flex: 1; padding: 5px 4px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em;
+    font-family: var(--hermes-font-sans); border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel2); color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .target-btn.selected { color: var(--fg); border-color: var(--accent); box-shadow: 0 0 8px -2px var(--accent); }
+  #inbox-text {
+    width: 100%; min-height: 56px; resize: vertical; font-family: inherit; font-size: 11.5px;
+    background: var(--panel2); color: var(--fg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 9px;
+  }
+  #inbox-text:focus { outline: none; border-color: var(--accent); }
+  #inbox-send {
+    padding: 7px; border-radius: 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .03em; font-family: var(--hermes-font-sans); border: 1px solid var(--accent);
+    background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel); color: var(--accent); cursor: pointer;
+  }
+  #inbox-send:hover { box-shadow: 0 0 10px -2px var(--accent); }
+  #inbox-send:disabled { opacity: .5; cursor: not-allowed; }
+  .inbox-log-item { font-size: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+  .inbox-log-item .to { color: var(--accent); font-weight: 700; }
+  .inbox-log-item .delivered { color: var(--active-glow); }
+  .inbox-log-item .pending { color: var(--say); }
+
+  /* gallery / submissions / rejected grid */
+  .piece-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .piece-card {
+    background: linear-gradient(180deg, var(--e1), transparent 30%), var(--panel);
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-1);
+  }
+  .piece-card .piece-head {
+    padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); font-family: var(--hermes-font-sans);
+  }
+  .piece-card .piece-name { font-weight: 700; font-size: 12px; color: var(--fg); }
+  .piece-card .piece-meta { font-size: 9.5px; color: var(--muted); }
+  .piece-card pre {
+    margin: 0; padding: 10px 12px; font-size: 9.5px; line-height: 1.15; white-space: pre; overflow-x: auto;
+    max-height: 340px; overflow-y: auto; color: #cfe0ff; background: #05070a;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .piece-card .piece-sidecar { padding: 8px 12px; font-size: 10.5px; border-top: 1px solid var(--border); }
+  .piece-card .piece-sidecar .label { color: var(--muted); text-transform: uppercase; font-size: 8.5px; letter-spacing: .04em; font-family: var(--hermes-font-sans); }
+  .piece-card .piece-sidecar.critique-accept { color: var(--accept); }
+  .piece-card .piece-sidecar.critique-reject { color: var(--reject); }
+</style>
+</head>
+<body>
+
+<h1><span class="ant-emoji">🖥️</span> AGENTSCII <span class="live-dot"></span></h1>
+<div class="h1-accent"></div>
+<div class="sub">Live viewer · auto-refresh 3s · directed, quality-gated ANSI/ACiD art · workspace ~/agentscii/workspace/ · oldest → newest ↓</div>
+
+<div class="agent-status-bar" id="status-bar">
+  <div class="status-card" id="status-artist">
+    <div class="status-left">
+      <span class="agent-avatar artist"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
+      <div class="agent-id">
+        <span class="agent-name artist">ARTIST</span>
+        <span class="agent-model" id="model-artist"></span>
+      </div>
+    </div>
+    <div class="status-right">
+      <span class="status-pill idle" id="pill-artist">idle</span>
+      <div class="status-meta" id="meta-artist"></div>
+    </div>
+  </div>
+  <div class="status-card" id="status-curator">
+    <div class="status-left">
+      <span class="agent-avatar curator"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
+      <div class="agent-id">
+        <span class="agent-name curator">CURATOR</span>
+        <span class="agent-model" id="model-curator"></span>
+      </div>
+    </div>
+    <div class="status-right">
+      <span class="status-pill idle" id="pill-curator">idle</span>
+      <div class="status-meta" id="meta-curator"></div>
+    </div>
+  </div>
+  <div class="run-overview">
+    <span class="label">Total shifts</span>
+    <span class="value" id="run-total-shifts">–</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="live" onclick="switchTab('live')">Live shifts</button>
+  <button class="tab-btn" data-tab="gallery" onclick="switchTab('gallery')">Gallery</button>
+  <button class="tab-btn" data-tab="submissions" onclick="switchTab('submissions')">Submissions</button>
+  <button class="tab-btn" data-tab="rejected" onclick="switchTab('rejected')">Rejected</button>
+</div>
+
+<div class="tab-panel active" id="tab-live">
+<div class="grid">
+
+  <div class="panel" id="artist-panel">
+    <div id="artist-messages" style="flex:1;"></div>
+  </div>
+
+  <div class="panel" id="curator-panel">
+    <div id="curator-messages" style="flex:1;"></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-card" id="control-card">
+      <h2>Controls</h2>
+      <div class="control-status" id="control-status">checking…</div>
+      <div class="control-buttons">
+        <button class="ctl-btn ctl-start" id="btn-start" onclick="doControl('start')">Start</button>
+        <button class="ctl-btn ctl-stop" id="btn-stop" onclick="doControl('stop')">Stop</button>
+        <button class="ctl-btn ctl-restart" id="btn-restart" onclick="doControl('restart')">Restart</button>
+        <button class="ctl-btn ctl-restart ctl-restart-dash" id="btn-restart-dash" onclick="doControl('restart-dashboard')">Restart dashboard</button>
+      </div>
+      <div class="control-msg" id="control-msg"></div>
+    </div>
+
+    <div class="sidebar-card" id="inbox-card">
+      <h2>Inbox — direct the project</h2>
+      <div id="inbox-form">
+        <div id="inbox-target">
+          <button class="target-btn selected" data-target="both" onclick="selectTarget('both')">Both</button>
+          <button class="target-btn" data-target="artist" onclick="selectTarget('artist')">Artist</button>
+          <button class="target-btn" data-target="curator" onclick="selectTarget('curator')">Curator</button>
+        </div>
+        <textarea id="inbox-text" placeholder="Idea, direction, or feedback — delivered at the start of the recipient's next shift."></textarea>
+        <button id="inbox-send" onclick="sendInbox()">Queue message</button>
+      </div>
+      <div class="sidebar-card-body fixed-sm" id="inbox-log" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="sidebar-card">
+      <h2>Inter-agent comms</h2>
+      <div class="sidebar-card-body fixed-4" id="comms-body"><div class="empty">no contact yet</div></div>
+    </div>
+
+    <div class="sidebar-card grow">
+      <h2>Curation feed</h2>
+      <div class="sidebar-card-body" id="curation-body"><div class="empty">nothing curated yet</div></div>
+    </div>
+
+    <div class="sidebar-card">
+      <h2>Stats</h2>
+      <div class="sidebar-card-body fixed-stats" id="stats-body"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="tab-panel" id="tab-gallery">
+  <div class="piece-grid" id="gallery-grid"><div class="empty">loading…</div></div>
+</div>
+
+<div class="tab-panel" id="tab-submissions">
+  <div class="piece-grid" id="submissions-grid"><div class="empty">loading…</div></div>
+</div>
+
+<div class="tab-panel" id="tab-rejected">
+  <div class="piece-grid" id="rejected-grid"><div class="empty">loading…</div></div>
+</div>
+
+<script>
+const API = "http://127.0.0.1:8766";
+
+const renderState = {
+  artist: { lastCount: 0 },
+  curator: { lastCount: 0 },
+  comms: { lastTs: null },
+  curation: { lastTs: null },
+};
+let agentActive = { artist: false, curator: false };
+let inboxTarget = "both";
+let currentTab = "live";
+
+function fmtTime(ts) {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleTimeString();
+}
+function fmtAgo(ts) {
+  if (!ts) return "";
+  const s = Math.floor(Date.now()/1000 - ts);
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s/60) + "m ago";
+  return Math.floor(s/3600) + "h ago";
+}
+function escapeHtml(s) {
+  return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+async function fetchJSON(path) {
+  const r = await fetch(API + path);
+  return r.json();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + tab));
+  if (tab === "gallery") refreshGallery();
+  if (tab === "submissions") refreshSubmissions();
+  if (tab === "rejected") refreshRejected();
+}
+
+function selectTarget(t) {
+  inboxTarget = t;
+  document.querySelectorAll(".target-btn").forEach(b => b.classList.toggle("selected", b.dataset.target === t));
+}
+
+async function sendInbox() {
+  const ta = document.getElementById("inbox-text");
+  const btn = document.getElementById("inbox-send");
+  const text = ta.value.trim();
+  if (!text) return;
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  try {
+    const r = await fetch(`${API}/api/inbox`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_agent: inboxTarget, text }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      ta.value = "";
+      refreshInboxLog();
+    }
+  } catch (e) { /* ignore */ }
+  btn.disabled = false;
+  btn.textContent = "Queue message";
+}
+
+async function refreshInboxLog() {
+  const d = await fetchJSON("/api/inbox");
+  const msgs = d.messages || [];
+  const container = document.getElementById("inbox-log");
+  if (!msgs.length) {
+    container.innerHTML = `<div class="empty">no messages queued yet</div>`;
+    return;
+  }
+  container.innerHTML = msgs.slice(-8).reverse().map(m => `
+    <div class="inbox-log-item">
+      <span class="to">→ ${m.to_agent}</span> · ${fmtTime(m.timestamp)} ·
+      <span class="${m.delivered ? 'delivered' : 'pending'}">${m.delivered ? 'delivered' : 'pending'}</span>
+      <div>${escapeHtml(m.text)}</div>
+    </div>
+  `).join("");
+}
+
+async function refreshStatus() {
+  const d = await fetchJSON("/api/status");
+  for (const agent of ["artist","curator"]) {
+    const s = d[agent] || {};
+    agentActive[agent] = !!s.active;
+    const card = document.getElementById(`status-${agent}`);
+    const pill = document.getElementById(`pill-${agent}`);
+    const meta = document.getElementById(`meta-${agent}`);
+    if (s.active) {
+      card.classList.add("active");
+      pill.className = "status-pill active";
+      pill.innerHTML = `<span class="spinner"></span> running`;
+      meta.textContent = "started " + fmtAgo(s.started_at);
+    } else {
+      card.classList.remove("active");
+      pill.className = "status-pill idle";
+      pill.textContent = "off shift";
+      meta.textContent = s.started_at ? "last tick " + fmtAgo(s.started_at) : "no sessions yet";
+    }
+  }
+  const anyActive = agentActive.artist || agentActive.curator;
+  document.getElementById("artist-panel").classList.toggle("agent-inactive", anyActive && !agentActive.artist);
+  document.getElementById("curator-panel").classList.toggle("agent-inactive", anyActive && !agentActive.curator);
+}
+
+async function refreshStats() {
+  const d = await fetchJSON("/api/stats");
+  let html = "";
+  let combinedShifts = 0;
+  for (const agent of ["artist", "curator"]) {
+    const s = d[agent] || {};
+    const color = agent === "artist" ? "var(--artist)" : "var(--curator)";
+    combinedShifts += s.total_shifts || 0;
+    html += `<div class="stat-block">`;
+    html += `<div class="stat-block-title" style="color:${color};">${agent}</div>`;
+    html += `<div class="stat-mini"><span>shifts</span><span>${s.total_shifts ?? "-"}</span></div>`;
+    html += `<div class="stat-mini"><span>last active</span><span>${s.last_active ? fmtAgo(s.last_active) : "-"}</span></div>`;
+    const tools = s.tool_usage || {};
+    const keys = Object.keys(tools);
+    if (keys.length) {
+      const max = Math.max(...keys.map(k => tools[k]));
+      html += keys.sort((a,b)=>tools[b]-tools[a]).map(k => {
+        const pct = Math.max(6, Math.round((tools[k]/max)*100));
+        return `<div class="bar-row">
+          <span class="bar-label">${escapeHtml(k)}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${pct}%"></span></span>
+          <span class="bar-count">${tools[k]}</span>
+        </div>`;
+      }).join("");
+    } else {
+      html += `<div style="color:var(--muted);font-size:10px;margin:4px 0;">no real tool calls yet</div>`;
+    }
+    html += `</div>`;
+  }
+  document.getElementById("stats-body").innerHTML = html;
+
+  const a = d.artist || {}, b = d.curator || {};
+  const totalEl = document.getElementById("run-total-shifts");
+  if (totalEl) {
+    totalEl.innerHTML = `${combinedShifts}<span class="split">(${a.total_shifts ?? 0} artist · ${b.total_shifts ?? 0} curator)</span>`;
+  }
+}
+
+function buildBubbles(allMsgs) {
+  const bubbles = [];
+  let lastSession = null;
+  for (const m of allMsgs) {
+    const tickChanged = m._session !== lastSession;
+    if (tickChanged) lastSession = m._session;
+
+    if (m.role === "user") {
+      let content = (m.content||"").replace(/^\[IMPORTANT:.*?\]\s*/s, "").trim();
+      if (!content) continue;
+      bubbles.push({ kind: "ping", icon: "📟", label: "harness ping", ts: m.timestamp, body: content, tickChanged, session: m._session });
+      continue;
+    }
+    if (m.role === "assistant") {
+      if (m.reasoning && m.reasoning.trim()) {
+        bubbles.push({ kind: "think", icon: "💭", label: "thinking", ts: m.timestamp, body: m.reasoning.trim(), tickChanged, session: m._session });
+      }
+      if (m.tool_calls) {
+        try {
+          const calls = JSON.parse(m.tool_calls);
+          for (const c of calls) {
+            const fn = c.function || {};
+            bubbles.push({ kind: "action", icon: "⚙️", label: "doing: " + (fn.name||"tool"), ts: m.timestamp, body: `${fn.name}(${fn.arguments||""})`, tickChanged: false, session: m._session });
+          }
+        } catch(e) {}
+      }
+      if (m.content && m.content.trim()) {
+        bubbles.push({ kind: "say", icon: "💬", label: "saying", ts: m.timestamp, body: m.content.trim(), tickChanged: false, session: m._session });
+      }
+      continue;
+    }
+    if (m.role === "tool") {
+      let content = (m.content||"").trim();
+      if (content.length > 800) content = content.slice(0,800) + "…";
+      bubbles.push({ kind: "result", icon: "👁️", label: "result: " + (m.tool_name||""), ts: m.timestamp, body: content, tickChanged: false, session: m._session });
+      continue;
+    }
+  }
+  return bubbles;
+}
+
+function renderBubbles(bubbles, agent, prevCount) {
+  let html = "";
+  let lastSession = null;
+  bubbles.forEach((b, i) => {
+    if (b.session !== lastSession) {
+      html += `<div class="tick-divider">shift ${b.session} · ${fmtTime(b.ts)}</div>`;
+      lastSession = b.session;
+    }
+    const isNew = i >= prevCount;
+    const isLatest = i === bubbles.length - 1;
+    const rowClasses = ["bubble-row", agent];
+    if (isNew) rowClasses.push("bubble-new");
+    if (isNew && isLatest) rowClasses.push("bubble-latest");
+    html += `<div class="${rowClasses.join(' ')}">
+      <span class="mini-avatar ${agent}"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
+      <div class="bubble ${b.kind}">
+        <div class="bubble-head">
+          <span class="kind"><span class="kind-emoji">${b.icon}</span> ${escapeHtml(b.label)}</span>
+          <span class="bubble-time">${fmtTime(b.ts)}</span>
+        </div>
+        <div class="bubble-body">${escapeHtml(b.body)}</div>
+      </div>
+    </div>`;
+  });
+  return html || `<div class="empty">nothing to show</div>`;
+}
+
+function typingIndicatorHtml(agent) {
+  return `<div class="bubble-row ${agent}">
+    <span class="mini-avatar ${agent}"><span class="blob"><span class="eye"></span><span class="eye"></span></span></span>
+    <div class="typing-bubble">
+      <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+    </div>
+  </div>`;
+}
+
+async function refreshAgentColumn(agent) {
+  const sessD = await fetchJSON(`/api/sessions?agent=${agent}`);
+  const sessions = sessD.sessions || [];
+  document.getElementById(`model-${agent}`).textContent = sessions[0] ? (sessions[0].model||"") : "";
+  const container = document.getElementById(`${agent}-messages`);
+  const scroller = document.getElementById(`${agent}-panel`);
+  if (!sessions.length) {
+    container.innerHTML = `<div class="empty">no sessions yet</div>`;
+    return;
+  }
+  const recent = sessions.slice(0, 4).reverse();
+  let allMsgs = [];
+  for (const s of recent) {
+    const d = await fetchJSON(`/api/messages?agent=${agent}&session_id=${s.id}`);
+    allMsgs = allMsgs.concat((d.messages||[]).map(m => ({...m, _session: s.id})));
+  }
+  if (!allMsgs.length) {
+    container.innerHTML = `<div class="empty">no messages</div>`;
+    return;
+  }
+  const bubbles = buildBubbles(allMsgs);
+  const state = renderState[agent];
+  const prevCount = bubbles.length >= state.lastCount ? state.lastCount : bubbles.length;
+
+  const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60;
+  let html = renderBubbles(bubbles, agent, prevCount);
+  if (agentActive[agent]) html += typingIndicatorHtml(agent);
+  container.innerHTML = html;
+  if (nearBottom) scroller.scrollTop = scroller.scrollHeight;
+
+  state.lastCount = bubbles.length;
+}
+
+async function refreshComms() {
+  const d = await fetchJSON("/api/agent-messages");
+  const msgs = d.messages || [];
+  const container = document.getElementById("comms-body");
+  if (!msgs.length) {
+    container.innerHTML = `<div class="empty">no contact yet</div>`;
+    return;
+  }
+  const recent = msgs.slice(-12).reverse();
+  const newestTs = recent[0] ? recent[0].timestamp : null;
+  const prevTs = renderState.comms.lastTs;
+  container.innerHTML = recent.map(m => {
+    let body = m.content || "";
+    const isNew = prevTs !== null && m.timestamp > prevTs;
+    return `<div class="comms-item ${isNew ? 'comms-new' : ''}">
+      <div class="comms-head">${m.from_agent} → peer · ${fmtTime(m.timestamp)}</div>
+      <div class="comms-body">${escapeHtml(body.slice(0,300))}</div>
+    </div>`;
+  }).join("");
+  renderState.comms.lastTs = newestTs;
+}
+
+async function refreshCurationFeed() {
+  const d = await fetchJSON("/api/curation-feed");
+  const events = d.events || [];
+  const container = document.getElementById("curation-body");
+  if (!events.length) {
+    container.innerHTML = `<div class="empty">nothing curated yet</div>`;
+    return;
+  }
+  const recent = events.slice(-20).reverse();
+  container.innerHTML = recent.map(e => {
+    const color = e.action === "accept" ? "var(--accept)" : e.action === "reject" ? "var(--reject)" : "var(--muted)";
+    return `<div class="comms-item" style="border-color:${color};">
+      <div class="comms-head" style="color:${color};">${e.action.toUpperCase()} · ${fmtTime(e.timestamp)}</div>
+      <div class="comms-body"><b>${escapeHtml(e.path)}</b>${e.dest_path ? ' → ' + escapeHtml(e.dest_path) : ''}<br>${escapeHtml((e.note||'').slice(0,250))}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderPieceGrid(container, pieces, kind) {
+  if (!pieces.length) {
+    container.innerHTML = `<div class="empty">nothing here yet</div>`;
+    return;
+  }
+  container.innerHTML = pieces.map(p => {
+    const sidecarClass = kind === "gallery" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
+    let sidecarHtml = "";
+    if (p.note) sidecarHtml += `<div class="piece-sidecar"><span class="label">Artist note</span><div>${escapeHtml(p.note)}</div></div>`;
+    if (p.critique) sidecarHtml += `<div class="piece-sidecar ${sidecarClass}"><span class="label">Curator critique</span><div>${escapeHtml(p.critique)}</div></div>`;
+    return `<div class="piece-card">
+      <div class="piece-head">
+        <span class="piece-name">${escapeHtml(p.path)}</span>
+        <span class="piece-meta">${p.size}b · ${fmtAgo(p.mtime)}</span>
+      </div>
+      <pre>${escapeHtml(p.content || '(binary or unreadable — view on disk)')}</pre>
+      ${sidecarHtml}
+    </div>`;
+  }).join("");
+}
+
+async function refreshGallery() {
+  const d = await fetchJSON("/api/gallery");
+  renderPieceGrid(document.getElementById("gallery-grid"), d.pieces || [], "gallery");
+}
+async function refreshSubmissions() {
+  const d = await fetchJSON("/api/submissions");
+  renderPieceGrid(document.getElementById("submissions-grid"), d.pieces || [], "submissions");
+}
+async function refreshRejected() {
+  const d = await fetchJSON("/api/rejected");
+  renderPieceGrid(document.getElementById("rejected-grid"), d.pieces || [], "rejected");
+}
+
+async function refreshControlStatus() {
+  let st;
+  try {
+    st = await fetchJSON("/api/control/status");
+  } catch (e) {
+    document.getElementById("control-status").innerHTML =
+      `<span class="control-pill down"><span class="dot"></span>dashboard unreachable</span>`;
+    return;
+  }
+  const pills = [];
+  pills.push(st.harness_running
+    ? `<span class="control-pill up"><span class="dot"></span>harness running</span>`
+    : `<span class="control-pill down"><span class="dot"></span>harness stopped</span>`);
+  pills.push(st.watchdog_running
+    ? `<span class="control-pill up"><span class="dot"></span>watchdog on</span>`
+    : `<span class="control-pill down"><span class="dot"></span>watchdog off</span>`);
+  if (st.stop_flag_present) {
+    pills.push(`<span class="control-pill flagged"><span class="dot"></span>stop flagged</span>`);
+  }
+  document.getElementById("control-status").innerHTML = pills.join("");
+
+  document.getElementById("btn-start").disabled = st.harness_running && st.watchdog_running;
+  document.getElementById("btn-stop").disabled = !st.harness_running;
+  document.getElementById("btn-restart").disabled = false;
+  document.getElementById("btn-restart-dash").disabled = false;
+}
+
+async function doControl(action) {
+  const btns = ["btn-start", "btn-stop", "btn-restart", "btn-restart-dash"].map(id => document.getElementById(id));
+  btns.forEach(b => b.disabled = true);
+  const msgEl = document.getElementById("control-msg");
+  msgEl.textContent = "working…";
+  if (action === "restart-dashboard") {
+    try {
+      await fetch(`${API}/api/control/restart-dashboard`, { method: "POST" });
+    } catch (e) { /* expected */ }
+    msgEl.textContent = "dashboard restarting — page will reconnect in a few seconds";
+    setTimeout(refreshControlStatus, 3000);
+    return;
+  }
+  try {
+    const r = await fetch(`${API}/api/control/${action}`, { method: "POST" });
+    const d = await r.json();
+    msgEl.textContent = d.message || "done";
+  } catch (e) {
+    msgEl.textContent = "request failed — is the dashboard server up?";
+  }
+  setTimeout(refreshControlStatus, 1500);
+}
+
+async function refreshAll() {
+  try {
+    await refreshStatus();
+    await Promise.all([
+      refreshStats(),
+      refreshAgentColumn("artist"),
+      refreshAgentColumn("curator"),
+      refreshComms(),
+      refreshCurationFeed(),
+      refreshInboxLog(),
+      refreshControlStatus(),
+    ]);
+    if (currentTab === "gallery") await refreshGallery();
+    if (currentTab === "submissions") await refreshSubmissions();
+    if (currentTab === "rejected") await refreshRejected();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+document.addEventListener("mousemove", (e) => {
+  const el = e.target.closest(".sidebar-card, .bubble");
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  el.style.setProperty("--mx", (e.clientX - rect.left) + "px");
+  el.style.setProperty("--my", (e.clientY - rect.top) + "px");
+});
+
+refreshAll();
+setInterval(refreshAll, 3000);
+</script>
+
+</body>
+</html>
