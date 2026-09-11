@@ -4,9 +4,11 @@ AGENTSCII live dashboard server.
 Forked from antfarm2-dashboard/server.py (SQLite live-view pattern, control
 endpoints, stdlib-only HTTP server are proven and reused). New here: a
 prompt-box endpoint that writes to human_messages (the inbox pattern,
-delivered at shift start, never interrupting live inference), and
-gallery/submissions/rejected/curation-feed views the antfarm2 dashboard has
-no equivalent of, because antfarm2 never had a quality gate.
+delivered at shift start, never interrupting live inference); a Gallery
+tab split into unpacked/ (accepted, pending release) and shipped packNN/
+releases with real FILE_ID.DIZ credits; a Submissions/Rejected view with
+contributor credits sidecars; and self-chosen agent handles surfaced next
+to the functional artist/curator seat labels.
 """
 import sqlite3
 import json
@@ -24,6 +26,7 @@ HOME = Path.home()
 PROJECT_DIR = HOME / "agentscii"
 WORKSPACE_DIR = PROJECT_DIR / "workspace"
 GALLERY_DIR = WORKSPACE_DIR / "gallery"
+GALLERY_UNPACKED_DIR = GALLERY_DIR / "unpacked"
 SUBMISSIONS_DIR = WORKSPACE_DIR / "submissions"
 REJECTED_DIR = WORKSPACE_DIR / "rejected"
 SCRATCH_DIR = WORKSPACE_DIR / "scratch"
@@ -104,6 +107,17 @@ def fetch_status():
             else:
                 out[agent] = {"active": False, "shift_id": None, "started_at": None}
         return out
+    finally:
+        conn.close()
+
+
+def fetch_handles():
+    conn = get_db()
+    if not conn:
+        return {}
+    try:
+        rows = conn.execute("SELECT seat, handle FROM agent_identity").fetchall()
+        return {r["seat"]: r["handle"] for r in rows}
     finally:
         conn.close()
 
@@ -205,40 +219,22 @@ def _list_dir_files(d, with_content=False, max_bytes=20000):
     return out
 
 
-def fetch_gallery():
-    files = _list_dir_files(GALLERY_DIR, with_content=True)
-    # group each piece with its sidecar .critique.txt / .note.txt
-    pieces = {}
-    for f in files:
-        name = f["path"]
-        if name.endswith(".critique.txt") or name.endswith(".note.txt"):
-            continue
-        pieces[name] = {**f, "critique": None, "note": None}
-    for f in files:
-        name = f["path"]
-        if name.endswith(".critique.txt"):
-            base = name[: -len(".critique.txt")]
-            if base in pieces:
-                pieces[base]["critique"] = f.get("content")
-        elif name.endswith(".note.txt"):
-            base = name[: -len(".note.txt")]
-            if base in pieces:
-                pieces[base]["note"] = f.get("content")
-    return list(pieces.values())
+def fetch_gallery_unpacked():
+    return _fetch_sidecar_dir(GALLERY_UNPACKED_DIR)
 
 
 def fetch_rejected():
     return _fetch_sidecar_dir(REJECTED_DIR)
 
 
-def _fetch_sidecar_dir(d):
-    files = _list_dir_files(d, with_content=True)
+def _fetch_sidecar_dir(d, with_content=True):
+    files = _list_dir_files(d, with_content=with_content)
     pieces = {}
     for f in files:
         name = f["path"]
-        if name.endswith(".critique.txt") or name.endswith(".note.txt"):
+        if name.endswith((".critique.txt", ".note.txt", ".credits.txt")) or name == "FILE_ID.DIZ":
             continue
-        pieces[name] = {**f, "critique": None, "note": None}
+        pieces[name] = {**f, "critique": None, "note": None, "credits": None}
     for f in files:
         name = f["path"]
         if name.endswith(".critique.txt"):
@@ -249,6 +245,10 @@ def _fetch_sidecar_dir(d):
             base = name[: -len(".note.txt")]
             if base in pieces:
                 pieces[base]["note"] = f.get("content")
+        elif name.endswith(".credits.txt"):
+            base = name[: -len(".credits.txt")]
+            if base in pieces:
+                pieces[base]["credits"] = f.get("content")
     return list(pieces.values())
 
 
@@ -258,6 +258,27 @@ def fetch_submissions():
 
 def fetch_scratch():
     return _list_dir_files(SCRATCH_DIR, with_content=False)
+
+
+def fetch_packs():
+    """List shipped pack releases: gallery/packNN/ dirs, each with a
+    FILE_ID.DIZ and its bundled pieces + sidecars."""
+    if not GALLERY_DIR.exists():
+        return []
+    packs = []
+    for d in sorted(GALLERY_DIR.iterdir(), reverse=True):
+        if not d.is_dir() or not d.name.startswith("pack"):
+            continue
+        diz_path = d / "FILE_ID.DIZ"
+        diz = diz_path.read_text(errors="replace") if diz_path.exists() else None
+        pieces = _fetch_sidecar_dir(d)
+        packs.append({
+            "name": d.name,
+            "mtime": d.stat().st_mtime,
+            "file_id_diz": diz,
+            "pieces": pieces,
+        })
+    return packs
 
 
 # --- process control ---------------------------------------------------
@@ -362,7 +383,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             } for s in shifts]
             self._send_json({"sessions": sessions})
             return
-
         if parsed.path == "/api/messages":
             agent = qs.get("agent", ["artist"])[0]
             shift_id = qs.get("session_id", [None])[0]
@@ -390,7 +410,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/status":
             st = fetch_status()
-            self._send_json({"artist": st.get("artist", {}), "curator": st.get("curator", {})})
+            handles = fetch_handles()
+            self._send_json({
+                "artist": {**st.get("artist", {}), "handle": handles.get("artist")},
+                "curator": {**st.get("curator", {}), "handle": handles.get("curator")},
+            })
+            return
+
+        if parsed.path == "/api/handles":
+            self._send_json(fetch_handles())
             return
 
         if parsed.path == "/api/agent-messages":
@@ -407,7 +435,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/gallery":
-            self._send_json({"pieces": fetch_gallery()})
+            self._send_json({"pieces": fetch_gallery_unpacked()})
+            return
+
+        if parsed.path == "/api/packs":
+            self._send_json({"packs": fetch_packs()})
             return
 
         if parsed.path == "/api/submissions":
