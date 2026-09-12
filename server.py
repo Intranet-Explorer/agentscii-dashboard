@@ -307,21 +307,32 @@ def post_human_message(to_agent, text):
         conn.close()
 
 
-def _list_dir_files(d, with_content=False, max_bytes=20000):
+def _list_dir_files(d, with_content=False, max_bytes=200000):
     if not d.exists():
         return []
+    IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
     out = []
     for f in sorted(d.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
         if not f.is_file():
             continue
         entry = {"path": f.name, "size": f.stat().st_size, "mtime": f.stat().st_mtime}
-        if with_content and f.stat().st_size < max_bytes:
+        if with_content and f.suffix.lower() in IMAGE_EXTS and f.stat().st_size < max_bytes:
+            try:
+                import base64
+                entry["image_b64"] = base64.b64encode(f.read_bytes()).decode()
+                entry["image_mime"] = "image/png" if f.suffix.lower() == ".png" else "image/jpeg" if f.suffix.lower() in (".jpg", ".jpeg") else "image/gif" if f.suffix.lower() == ".gif" else "image/webp"
+            except Exception:
+                entry["image_b64"] = None
+        elif with_content and f.stat().st_size < max_bytes:
             try:
                 entry["content"] = f.read_text(errors="replace")
             except Exception:
                 entry["content"] = None
             if f.suffix.lower() in ANSI_EXTS:
                 entry["rendered_html"] = render_ans_file(f)
+        elif with_content:
+            entry["content"] = None
+            entry["too_large"] = True
         out.append(entry)
     return out
 

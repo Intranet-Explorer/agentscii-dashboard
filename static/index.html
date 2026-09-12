@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AGENTSCII — live viewer</title>
 <style>
   :root {
@@ -52,6 +53,10 @@
     margin: 0;
     padding: 14px;
     font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -60,24 +65,33 @@
   * { scrollbar-width: thin; scrollbar-color: #2a3244 transparent; }
   h1 {
     font-size: 52px; margin: 0 0 2px 0; display:flex; align-items:center; gap:14px;
-    font-family: "Collapse", var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .01em;
-    line-height: 1;
-    text-shadow: 0 0 24px rgba(110,231,255,.25), 0 0 50px rgba(255,184,110,.12);
+    font-family: "Collapse", var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .02em;
+    line-height: 1; flex-shrink: 0;
   }
-  h1 .ant-emoji { font-size: 44px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
-  h1 .live-dot { width: 11px; height: 11px; align-self: flex-start; margin-top: 10px; }
+  h1 .ant-emoji { font-size: 44px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.5)); flex-shrink: 0; }
+  h1 .wordmark {
+    background: linear-gradient(90deg, var(--artist), var(--comms) 50%, var(--curator));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: titleGlow 4.5s ease-in-out infinite;
+  }
+  @keyframes titleGlow {
+    0%, 100% { filter: drop-shadow(0 0 14px rgba(184,146,255,.35)) drop-shadow(0 0 30px rgba(110,231,255,.2)); }
+    50%      { filter: drop-shadow(0 0 22px rgba(184,146,255,.55)) drop-shadow(0 0 44px rgba(255,184,110,.32)); }
+  }
+  h1 .live-dot { width: 11px; height: 11px; align-self: flex-start; margin-top: 10px; flex-shrink: 0; }
   .h1-accent {
     height: 4px; width: 110px; border-radius: 3px; margin: 8px 0 12px;
     background: linear-gradient(90deg, var(--artist), var(--comms), var(--curator));
     box-shadow: 0 0 10px rgba(184,146,255,.4);
   }
-  .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 14px; letter-spacing: .01em; flex-shrink: 0; }
 
   .agent-status-bar {
     display: grid;
     grid-template-columns: 1fr 1fr 300px;
     gap: 12px;
     margin-bottom: 12px;
+    flex-shrink: 0;
   }
   .status-card {
     flex: 1;
@@ -100,7 +114,7 @@
     0%,100% { box-shadow: var(--shadow-2), 0 0 12px -2px var(--active-glow); }
     50% { box-shadow: var(--shadow-3), 0 0 22px 1px var(--active-glow); }
   }
-  .status-left { display: flex; align-items: center; gap: 12px; }
+  .status-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
   .status-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
   .agent-avatar {
     width: 44px; height: 44px; flex-shrink: 0; transition: transform .25s ease;
@@ -140,11 +154,12 @@
     font-weight: 700; font-size: 20px; letter-spacing: .02em;
     font-family: "Collapse", var(--hermes-font-sans);
     text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .agent-name.artist { color: var(--artist); }
   .agent-name.curator { color: var(--curator); }
-  .agent-id { display: flex; flex-direction: column; gap: 1px; }
-  .agent-model { font-size: 9px; color: var(--muted); letter-spacing: .01em; }
+  .agent-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; overflow: hidden; }
+  .agent-model { font-size: 9px; color: var(--muted); letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .status-pill {
     font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
     font-family: var(--hermes-font-sans);
@@ -171,10 +186,10 @@
   }
   .run-overview:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
   .run-overview .label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-family: var(--hermes-font-sans); }
-  .run-overview .value { font-size: 20px; font-weight: 700; font-family: "Collapse", var(--hermes-font-sans); display: flex; align-items: baseline; gap: 6px; }
+  .run-overview .value { font-size: 20px; font-weight: 700; font-family: "Collapse", var(--hermes-font-sans); display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
   .run-overview .value .split { color: var(--muted); font-size: 12px; font-weight: 400; font-family: var(--hermes-font-sans); }
 
-  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-shrink: 0; }
   .tab-btn {
     padding: 7px 14px; border-radius: 9px; font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .03em; font-family: var(--hermes-font-sans);
@@ -191,14 +206,15 @@
   }
   .tab-btn:hover::after { animation: shineSweep .8s ease; }
   @keyframes shineSweep { from { left: -60%; } to { left: 130%; } }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
+  .tab-panel { display: none; flex: 1; min-height: 0; overflow-y: auto; }
+  .tab-panel.active { display: flex; flex-direction: column; }
 
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr 300px;
     gap: 12px;
-    height: calc(100vh - 240px);
+    flex: 1;
+    min-height: 0;
   }
   .panel {
     background: linear-gradient(180deg, var(--e1), transparent 30%), var(--panel);
@@ -214,7 +230,7 @@
     position: relative;
   }
   .panel:hover { box-shadow: var(--shadow-2); }
-  .sidebar { display: flex; flex-direction: column; gap: 10px; height: 100%; overflow: hidden; }
+  .sidebar { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; overflow: hidden; }
   .sidebar-card {
     background: linear-gradient(180deg, var(--e2), var(--e1)), var(--panel);
     backdrop-filter: blur(var(--acrylic-blur)) saturate(1.3);
@@ -232,6 +248,7 @@
   }
   .sidebar-card:hover { border-color: #2c374d; box-shadow: var(--shadow-2); transform: translateY(-1px); }
   #control-card, #inbox-card { flex-shrink: 0; }
+  .sidebar-card:not(#control-card):not(#inbox-card):not(.grow) { flex: 1; min-height: 0; }
   .sidebar-card::before {
     content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
     background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.06), transparent 60%);
@@ -249,9 +266,7 @@
     flex-shrink: 0;
   }
   .sidebar-card-body { overflow-y: auto; min-height: 0; flex: 1; }
-  .sidebar-card-body.fixed-4 { max-height: 300px; }
   .sidebar-card-body.fixed-sm { max-height: 130px; }
-  .sidebar-card-body.fixed-stats { max-height: 210px; }
 
   .bubble-row { display: flex; margin-bottom: 10px; gap: 8px; align-items: flex-start; }
   .mini-avatar {
@@ -532,6 +547,8 @@
   .lightbox-body { overflow: auto; padding: 20px; }
   .lightbox-body pre { margin: 0; font-size: 17px; line-height: 1.15; font-family: "SF Mono", Menlo, monospace; white-space: pre; }
   .piece-card pre.ansi-render span { display: inline; }
+  .image-preview { background: #05070a; display: flex; align-items: center; justify-content: center; padding: 8px; }
+  .image-preview img { max-width: 100%; height: auto; display: block; border-radius: 4px; image-rendering: pixelated; }
 </style>
 </head>
 <body>
@@ -546,7 +563,7 @@
   </div>
 </div>
 
-<h1><span class="ant-emoji">🖥️</span> AGENTSCII <span class="live-dot"></span></h1>
+<h1><span class="ant-emoji">🖥️</span> <span class="wordmark">AGENTSCII</span> <span class="live-dot"></span></h1>
 <div class="h1-accent"></div>
 <div class="sub">Live viewer · auto-refresh 3s · directed, quality-gated ANSI/ACiD art · workspace ~/agentscii/workspace/ · oldest → newest ↓</div>
 
@@ -997,6 +1014,10 @@ function renderPieceGrid(container, pieces, kind) {
     if (isAnsi && p.rendered_html) {
       const lbId = registerLightboxPiece(p.path, p.rendered_html);
       bodyHtml = `<div class="crt-screen" onclick="openLightbox(${lbId})"><span class="expand-hint">⤢ click to enlarge</span><pre class="ansi-render">${p.rendered_html}</pre></div>`;
+    } else if (p.image_b64) {
+      bodyHtml = `<div class="image-preview"><img src="data:${p.image_mime};base64,${p.image_b64}" alt="${escapeHtml(p.path)}" loading="lazy"></div>`;
+    } else if (p.too_large) {
+      bodyHtml = `<pre>(${p.size.toLocaleString()} bytes — too large to preview inline, click for full view on disk)</pre>`;
     } else if (isAnsi) {
       bodyHtml = `<pre>(couldn't render — binary/unreadable, view on disk)</pre>`;
     } else {
