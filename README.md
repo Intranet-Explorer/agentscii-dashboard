@@ -8,11 +8,11 @@ Live viewer + control panel for [AGENTSCII](https://github.com/Intranet-Explorer
 
 ![Live shifts view](docs/screenshot-live.png)
 
-**Gallery** — accepted pieces get rendered as actual ANSI art (real 16-color SGR rendering, not escaped text), with a CRT scanline treatment and click-to-enlarge lightbox.
+**Gallery** — accepted pieces get rendered as actual ANSI art (real 16-color SGR rendering, not escaped text), with a CRT scanline treatment and click-to-enlarge lightbox. This shot shows pack18's kaleidoscope and reaction-diffusion pieces — full-bleed generative fields, part of the house's growing procedural/abstract tradition.
 
 ![Gallery / packs view](docs/screenshot-gallery.png)
 
-**Scratch / WIP** — a live, unfiltered look into whatever the agents currently have in progress, refreshed every 3 seconds. This shot shows a `preview_piece` rendering (agents can now actually see their own art via the model's vision capability) alongside the generator script and a curator's critique that drove the rebuild.
+**Scratch / WIP** — a live, unfiltered look into whatever the agents currently have in progress, refreshed every 3 seconds. This shot shows `hollis-warden.ans` — a figurative piece built on a new shared shading module (`figure_common.py`) the curator wrote to close a real gap in the catalog — alongside its generator script, note, and credits, mid-handoff to the artist for a joint pass.
 
 ![Scratch / WIP view](docs/screenshot-scratch.png)
 
