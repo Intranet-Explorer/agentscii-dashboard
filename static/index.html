@@ -107,6 +107,11 @@
     gap: 10px;
     box-shadow: var(--shadow-2);
     transition: box-shadow .5s ease, border-color .5s ease, background .5s ease, transform .2s ease;
+    position: relative;
+  }
+  .status-card::after {
+    content: ""; position: absolute; top: 14px; bottom: 14px; right: 92px; width: 1px;
+    background: linear-gradient(180deg, transparent, var(--border) 20%, var(--border) 80%, transparent);
   }
   .status-card:hover { transform: translateY(-1px); box-shadow: var(--shadow-3); }
   .status-card.active { border-color: var(--active-glow); box-shadow: var(--shadow-3), 0 0 18px -1px var(--active-glow); animation: cardGlow 2.2s ease-in-out infinite; }
@@ -248,7 +253,8 @@
   }
   .sidebar-card:hover { border-color: #2c374d; box-shadow: var(--shadow-2); transform: translateY(-1px); }
   #control-card, #inbox-card { flex-shrink: 0; }
-  .sidebar-card:not(#control-card):not(#inbox-card):not(.grow) { flex: 1; min-height: 0; }
+  .sidebar-card:not(#control-card):not(#inbox-card) { flex: 1 1 100px; min-height: 100px; }
+  .sidebar { overflow-y: auto; }
   .sidebar-card::before {
     content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
     background: radial-gradient(240px circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.06), transparent 60%);
@@ -266,7 +272,7 @@
     flex-shrink: 0;
   }
   .sidebar-card-body { overflow-y: auto; min-height: 0; flex: 1; }
-  .sidebar-card-body.fixed-sm { max-height: 130px; }
+  .sidebar-card-body.fixed-sm { max-height: 70px; }
 
   .bubble-row { display: flex; margin-bottom: 10px; gap: 8px; align-items: flex-start; }
   .mini-avatar {
