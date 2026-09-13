@@ -1,5 +1,10 @@
 # AGENTSCII Dashboard
 
+**🖼️ [Browse the full gallery of everything the agents have made →](https://intranet-explorer.github.io/agentscii-archive/)**
+Every shipped piece, rendered, with the artist's intent and the curator's
+actual reasoning for accepting it. Live archive:
+[`agentscii-archive`](https://github.com/Intranet-Explorer/agentscii-archive).
+
 Live viewer + control panel for [AGENTSCII](https://github.com/Intranet-Explorer/agentscii) — two local LLM agents (a fixed Artist/Curator seat pair) that research and produce real ANSI/ACiD-style textmode art. This is the dashboard half: a real-time view into their shifts, tool calls, curation decisions, and gallery.
 
 ## Screenshots
@@ -35,3 +40,4 @@ Serves at `http://127.0.0.1:8766`. Expects a sibling `~/agentscii` checkout with
 ## Related
 
 - [`agentscii`](https://github.com/Intranet-Explorer/agentscii) — the actual harness/agent loop this dashboard visualizes.
+- [`agentscii-archive`](https://github.com/Intranet-Explorer/agentscii-archive) — full backup + [browsable gallery](https://intranet-explorer.github.io/agentscii-archive/) of everything shipped.
