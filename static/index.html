@@ -510,13 +510,43 @@
   }
   .piece-card pre {
     margin: 0; padding: 12px 14px; font-size: 11.5px; line-height: 1.15; white-space: pre; overflow-x: auto;
-    max-height: 480px; overflow-y: auto; color: #cfe0ff; background: #05070a;
+    color: #cfe0ff; background: #05070a;
     font-family: "SF Mono", Menlo, monospace;
   }
   .piece-card .piece-sidecar { padding: 8px 12px; font-size: 10.5px; border-top: 1px solid var(--border); }
   .piece-card .piece-sidecar .label { color: var(--muted); text-transform: uppercase; font-size: 8.5px; letter-spacing: .04em; font-family: var(--hermes-font-sans); }
   .piece-card .piece-sidecar.critique-accept { color: var(--accept); }
   .piece-card .piece-sidecar.critique-reject { color: var(--reject); }
+  .diz-toggle {
+    margin-top: 12px; padding: 6px 10px; font-size: 10.5px; color: var(--muted);
+    font-family: var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .03em;
+    cursor: pointer; border: 1px solid var(--border); border-radius: 7px; display: inline-block;
+    transition: all .15s ease;
+  }
+  .diz-toggle:hover { color: var(--fg); border-color: var(--accent); }
+  .diz-body {
+    background: #05070a; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+    font-size: 10.5px; white-space: pre-wrap; color: #cfe0ff; margin: 8px 0 0;
+  }
+  .piece-card.scratch-no-art { opacity: .8; }
+  .kind-tag {
+    font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+    font-family: var(--hermes-font-sans); padding: 1px 6px; border-radius: 5px; white-space: nowrap;
+  }
+  .kind-tag.kind-art { color: var(--accent); background: rgba(184,146,255,.14); }
+  .kind-tag.kind-source { color: var(--tool); background: rgba(110,230,154,.12); }
+  .kind-tag.kind-sidecar { color: var(--say); background: rgba(255,209,102,.12); }
+  .kind-tag.kind-debug { color: var(--muted); background: rgba(107,118,136,.14); }
+  .scratch-others-toggle {
+    padding: 7px 12px; font-size: 10px; color: var(--muted); cursor: pointer;
+    font-family: var(--hermes-font-sans); text-transform: uppercase; letter-spacing: .03em;
+    border-top: 1px solid var(--border); transition: color .15s ease;
+  }
+  .scratch-others-toggle:hover { color: var(--fg); }
+  .scratch-others-body { padding: 4px 12px 10px; }
+  .scratch-other-item {
+    font-size: 10.5px; color: var(--muted); padding: 3px 0; display: flex; align-items: center; gap: 7px;
+  }
   .piece-card pre.ansi-render { font-weight: 600; letter-spacing: 0; }
   .piece-card .expand-hint {
     position: absolute; top: 8px; right: 10px; z-index: 3; font-size: 9px; color: rgba(255,255,255,.55);
@@ -1071,8 +1101,58 @@ async function refreshSubmissions() {
 }
 async function refreshScratch() {
   const d = await fetchJSON("/api/scratch");
-  renderPieceGrid(document.getElementById("scratch-grid"), d.pieces || [], "scratch");
+  renderScratchGroups(document.getElementById("scratch-grid"), d.pieces || []);
 }
+
+function renderScratchGroups(container, groups) {
+  if (!groups.length) {
+    container.innerHTML = `<div class="empty">nothing in scratch/ right now</div>`;
+    return;
+  }
+  lightboxPieces = [];
+  container.innerHTML = `<div class="piece-grid">${groups.map((g, gIdx) => {
+    const p = g.primary;
+    const isAnsi = /\.(ans|asc)$/i.test(p.path);
+    let bodyHtml;
+    if (isAnsi && p.rendered_html) {
+      const lbId = registerLightboxPiece(p.path, p.rendered_html);
+      bodyHtml = `<div class="crt-screen" onclick="openLightbox(${lbId})"><span class="expand-hint">⤢ click to enlarge</span><pre class="ansi-render">${p.rendered_html}</pre></div>`;
+    } else if (p.image_b64) {
+      bodyHtml = `<div class="image-preview"><img src="data:${p.image_mime};base64,${p.image_b64}" alt="${escapeHtml(p.path)}" loading="lazy"></div>`;
+    } else if (p.too_large) {
+      bodyHtml = `<pre>(${p.size.toLocaleString()} bytes — too large to preview inline)</pre>`;
+    } else {
+      bodyHtml = `<pre>${escapeHtml((p.content || '').slice(0, 4000) || '(binary or unreadable)')}</pre>`;
+    }
+    // secondary members: everything in the group except the one shown as
+    // the primary preview, so a piece with 6 backup revisions doesn't
+    // repeat the same content 6 times — just names them, collapsed.
+    const others = g.members.filter(m => m.path !== p.path);
+    const kindLabel = k => k === "art" ? "art" : k === "sidecar" ? "note" : k === "debug" ? "old/debug" : "script";
+    const othersHtml = others.length ? `
+      <div class="scratch-others-toggle" onclick="toggleScratchOthers(${gIdx})" id="scratch-others-toggle-${gIdx}">▸ ${others.length} more file${others.length===1?'':'s'} in this piece (${g.n_source} script${g.n_source===1?'':'s'}${g.n_debug ? `, ${g.n_debug} old/backup` : ''})</div>
+      <div class="scratch-others-body" id="scratch-others-body-${gIdx}" style="display:none;">
+        ${others.map(m => `<div class="scratch-other-item"><span class="kind-tag kind-${m.kind}">${kindLabel(m.kind)}</span> ${escapeHtml(m.path)} <span class="piece-meta">· ${fmtAgo(m.mtime)}</span></div>`).join('')}
+      </div>` : '';
+    return `<div class="piece-card ${g.has_art ? '' : 'scratch-no-art'}">
+      <div class="piece-head">
+        <span class="piece-name">${escapeHtml(g.base)}${!g.has_art ? ' <span class="kind-tag kind-source" style="margin-left:6px;">no art yet</span>' : ''}</span>
+        <span class="piece-meta">${fmtAgo(g.mtime)}</span>
+      </div>
+      ${bodyHtml}
+      ${othersHtml}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function toggleScratchOthers(idx) {
+  const body = document.getElementById(`scratch-others-body-${idx}`);
+  const toggle = document.getElementById(`scratch-others-toggle-${idx}`);
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "block";
+  toggle.textContent = toggle.textContent.replace(open ? "▾" : "▸", open ? "▸" : "▾");
+}
+
 async function refreshRejected() {
   const d = await fetchJSON("/api/rejected");
   renderPieceGrid(document.getElementById("rejected-grid"), d.pieces || [], "rejected");
@@ -1085,10 +1165,9 @@ async function refreshPacks() {
     container.innerHTML = `<div class="empty">no packs shipped yet — accepted pieces wait in Unpacked until the curator ships a release</div>`;
     return;
   }
-  container.innerHTML = packs.map(p => `
+  container.innerHTML = packs.map((p, pIdx) => `
     <div class="sidebar-card" style="margin-bottom:16px;">
-      <h2>${escapeHtml(p.name)} <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:10px;">· ${fmtAgo(p.mtime)}</span></h2>
-      <pre style="background:#05070a;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:10.5px;white-space:pre-wrap;color:#cfe0ff;margin:0 0 12px;">${escapeHtml(p.file_id_diz || '(no FILE_ID.DIZ)')}</pre>
+      <h2>${escapeHtml(p.name)} <span style="color:var(--muted);font-weight:400;text-transform:none;font-size:10px;">· ${(p.pieces||[]).length} file${(p.pieces||[]).length===1?'':'s'} · ${fmtAgo(p.mtime)}</span></h2>
       <div class="piece-grid">${(p.pieces||[]).map(pc => `
         <div class="piece-card">
           <div class="piece-head">
@@ -1098,8 +1177,18 @@ async function refreshPacks() {
           <div class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'crt-screen' : ''}"><pre class="${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? 'ansi-render' : ''}">${/\.(ans|asc)$/i.test(pc.path) && pc.rendered_html ? pc.rendered_html : escapeHtml(pc.content || '(binary or unreadable)')}</pre></div>
         </div>
       `).join('')}</div>
+      <div class="diz-toggle" onclick="toggleDiz(${pIdx})" id="diz-toggle-${pIdx}">▸ FILE_ID.DIZ (release credits)</div>
+      <pre class="diz-body" id="diz-body-${pIdx}" style="display:none;">${escapeHtml(p.file_id_diz || '(no FILE_ID.DIZ)')}</pre>
     </div>
   `).join("");
+}
+
+function toggleDiz(idx) {
+  const body = document.getElementById(`diz-body-${idx}`);
+  const toggle = document.getElementById(`diz-toggle-${idx}`);
+  const open = body.style.display !== "none";
+  body.style.display = open ? "none" : "block";
+  toggle.textContent = (open ? "▸" : "▾") + " FILE_ID.DIZ (release credits)";
 }
 
 async function refreshControlStatus() {

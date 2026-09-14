@@ -447,11 +447,79 @@ def fetch_submissions():
     return _fetch_sidecar_dir(SUBMISSIONS_DIR)
 
 
+def _classify_scratch_file(name):
+    """Bucket a scratch/ filename so the dashboard can group by piece and
+    rank real WIP art above debug noise, instead of a flat alphabetical/
+    mtime dump of all ~450 files. Heuristic, not authoritative -- based on
+    the naming conventions the agents actually use (checked against the
+    real file list): .bak/.bak.* suffixes and pre_/pre-/prefix-style
+    version tags for superseded revisions, .err/.out for command-output
+    captures, .note/.critique/.credits/.scope/.DONE/.JOINT_SHIPPED for
+    sidecar metadata, .ans/.asc for actual art, everything else (mostly
+    generator .py scripts) as source."""
+    lower = name.lower()
+    if lower.endswith((".ans", ".asc")):
+        return "art"
+    if lower.endswith((".note.txt", ".critique.txt", ".credits.txt", ".scope.txt")) or \
+       lower.endswith((".done.txt", ".joint_shipped.txt")):
+        return "sidecar"
+    if ".bak" in lower or ".pre" in lower or lower.endswith((".err", ".out")):
+        return "debug"
+    return "source"
+
+
 def fetch_scratch():
-    """Live view of scratch/ WIP — .ans/.asc files render just like accepted
-    pieces (chafa-free, our own SGR renderer), other files (generator .py
-    scripts etc.) show as a text preview."""
-    return _list_dir_files(SCRATCH_DIR, with_content=True)
+    """Live view of scratch/ WIP, grouped by piece basename the same way
+    Unpacked/Submissions/Rejected already group a piece with its sidecars --
+    scratch never got that treatment before, so it rendered as a flat list
+    of ~450 files (generator scripts, stale .bak revisions, command-output
+    captures, and actual WIP art all equal weight, no way to tell which is
+    which at a glance). Groups by stripping the LONGEST known suffix (so
+    `_wharf_v6.ans.bak` groups under `_wharf_v6`, not a stray `_wharf_v6.ans`
+    bucket) and ranks each group's primary preview: newest .ans/.asc first,
+    falling back to newest of anything if a piece has no art yet."""
+    files = _list_dir_files(SCRATCH_DIR, with_content=True)
+    KNOWN_SUFFIXES = sorted([
+        ".note.txt", ".critique.txt", ".credits.txt", ".scope.txt",
+        ".done.txt", ".joint_shipped.txt", ".ans.bak", ".py.bak",
+    ], key=len, reverse=True)
+
+    def base_of(name):
+        lower = name.lower()
+        for suf in KNOWN_SUFFIXES:
+            if lower.endswith(suf):
+                return name[: -len(suf)]
+        # generic .bak/.pre*/.err/.out and any other single extension:
+        # strip exactly one suffix so `_wharf.py` and `_wharf.ans` group
+        # together but a whole chain like `.ans.bak.py` isn't over-stripped
+        stem = Path(name).stem
+        return stem
+
+    groups = {}
+    for f in files:
+        f = dict(f)
+        f["kind"] = _classify_scratch_file(f["path"])
+        b = base_of(f["path"])
+        groups.setdefault(b, []).append(f)
+
+    out = []
+    for base, members in groups.items():
+        members.sort(key=lambda f: f["mtime"], reverse=True)
+        art = [f for f in members if f["kind"] == "art"]
+        primary = art[0] if art else members[0]
+        newest_mtime = max(f["mtime"] for f in members)
+        out.append({
+            "base": base,
+            "primary": primary,
+            "members": members,
+            "has_art": bool(art),
+            "n_art": len(art),
+            "n_source": sum(1 for f in members if f["kind"] == "source"),
+            "n_debug": sum(1 for f in members if f["kind"] == "debug"),
+            "mtime": newest_mtime,
+        })
+    out.sort(key=lambda g: g["mtime"], reverse=True)
+    return out
 
 
 def fetch_packs():
