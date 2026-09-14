@@ -61,6 +61,8 @@ PALETTE = [
 ]
 
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+_CSI_RE = re.compile(r"\x1b\[([0-9;]*)([A-Za-z])")
+_TERMINAL_WIDTH = 80
 
 
 def decode_ans_bytes(raw):
@@ -76,65 +78,136 @@ def decode_ans_bytes(raw):
 def ansi_to_html(text):
     """Convert SGR-coded ANSI text into HTML: styled <span> runs, real
     colors from PALETTE. Returns the inner HTML only — caller wraps it in
-    a <pre> with the right font/line-height."""
+    a <pre> with the right font/line-height.
+
+    Real cursor-addressable grid model, not a flat left-to-right text scan.
+    Classic ACiD/Blocktronics-scene .ANS files (and this project's own
+    references/study/ corpus) routinely draw a base layer, then jump the
+    cursor BACK UP with ESC[A to layer highlights/shadows onto rows already
+    drawn. The old version here only understood SGR color codes and passed
+    every other escape sequence through unconsumed — cursor-repositioned
+    content didn't overwrite anything, it just got appended after in
+    linear order, visibly duplicating/misplacing content. This mirrors the
+    fix already made to harness.py's render_ans_to_png_b64 so both
+    renderers treat the same file the same way."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    out = []
-    pos = 0
+
+    grid = {}
+    row, col = 0, 0
+    max_row_seen = 0
     base_fg, bright_fg, base_bg = 7, False, 0
-    span_open = False
+    pos = 0
+    n = len(text)
+    pending_wrap = False  # deferred wrap, like a real terminal: filling the
+                          # last column doesn't advance the row until the
+                          # NEXT char is drawn -- avoids double-advancing on
+                          # an explicit \n right after a full-width line.
 
-    def style_attr():
+    def put(ch):
+        nonlocal col, row, max_row_seen, pending_wrap
+        if pending_wrap:
+            row += 1
+            col = 0
+            pending_wrap = False
+            if row > max_row_seen:
+                max_row_seen = row
         fg_idx = (base_fg + 8) if bright_fg else base_fg
-        return f'style="color:{PALETTE[fg_idx % 16]};background-color:{PALETTE[base_bg % 16]}"'
+        grid[(row, col)] = (ch, fg_idx % 16, base_bg % 16)
+        col += 1
+        if col >= _TERMINAL_WIDTH:
+            col = _TERMINAL_WIDTH - 1
+            pending_wrap = True
 
-    def open_span():
-        nonlocal span_open
-        out.append(f"<span {style_attr()}>")
-        span_open = True
+    while pos < n:
+        ch = text[pos]
+        if ch == "\n":
+            if pending_wrap:
+                pending_wrap = False
+            else:
+                row += 1
+                col = 0
+                if row > max_row_seen:
+                    max_row_seen = row
+            pos += 1
+            continue
+        m = _CSI_RE.match(text, pos)
+        if m:
+            param_str, code = m.group(1), m.group(2)
+            params = [int(c) for c in param_str.split(";") if c != ""]
+            if code == "m":
+                for p in (params or [0]):
+                    if p == 0:
+                        base_fg, bright_fg, base_bg = 7, False, 0
+                    elif p == 1:
+                        bright_fg = True
+                    elif p == 22:
+                        bright_fg = False
+                    elif p == 39:
+                        base_fg, bright_fg = 7, False
+                    elif p == 49:
+                        base_bg = 0
+                    elif 30 <= p <= 37:
+                        base_fg = p - 30
+                    elif 90 <= p <= 97:
+                        base_fg, bright_fg = p - 90, True
+                    elif 40 <= p <= 47:
+                        base_bg = p - 40
+                    elif 100 <= p <= 107:
+                        base_bg = p - 100 + 8
+            elif code == "C":
+                col = min(_TERMINAL_WIDTH - 1, col + (params[0] if params else 1))
+                pending_wrap = False
+            elif code == "D":
+                col = max(0, col - (params[0] if params else 1))
+                pending_wrap = False
+            elif code == "A":
+                row = max(0, row - (params[0] if params else 1))
+                pending_wrap = False
+            elif code == "B":
+                row = row + (params[0] if params else 1)
+                pending_wrap = False
+                if row > max_row_seen:
+                    max_row_seen = row
+            elif code in ("H", "f"):
+                r = params[0] - 1 if len(params) >= 1 and params[0] else 0
+                c = params[1] - 1 if len(params) >= 2 and params[1] else 0
+                row, col = max(0, r), max(0, min(_TERMINAL_WIDTH - 1, c))
+                pending_wrap = False
+                if row > max_row_seen:
+                    max_row_seen = row
+            # any other CSI final byte (K, J, etc.) is consumed and ignored.
+            pos = m.end()
+            continue
+        put(ch)
+        pos += 1
 
-    def close_span():
-        nonlocal span_open
+    total_rows = max_row_seen + 1
+    out_lines = []
+    for r in range(total_rows):
+        parts = []
+        last_fg, last_bg = None, None
+        span_open = False
+        # trim trailing default-styled blank cells so short rows don't pad
+        # the HTML with meaningless empty spans
+        last_col = -1
+        for c in range(_TERMINAL_WIDTH):
+            cell = grid.get((r, c))
+            if cell is not None and cell != (" ", 7, 0):
+                last_col = c
+        for c in range(last_col + 1):
+            cell = grid.get((r, c), (" ", 7, 0))
+            ch, fg_idx, bg_idx = cell
+            if (fg_idx, bg_idx) != (last_fg, last_bg):
+                if span_open:
+                    parts.append("</span>")
+                parts.append(f'<span style="color:{PALETTE[fg_idx % 16]};background-color:{PALETTE[bg_idx % 16]}">')
+                span_open = True
+                last_fg, last_bg = fg_idx, bg_idx
+            parts.append(html_mod.escape(ch))
         if span_open:
-            out.append("</span>")
-            span_open = False
-
-    open_span()
-    for m in _SGR_RE.finditer(text):
-        chunk = text[pos:m.start()]
-        if chunk:
-            out.append(html_mod.escape(chunk))
-        pos = m.end()
-        codes = m.group(1)
-        params = [int(c) for c in codes.split(";") if c != ""] or [0]
-        changed = False
-        for p in params:
-            if p == 0:
-                base_fg, bright_fg, base_bg = 7, False, 0
-            elif p == 1:
-                bright_fg = True
-            elif p == 22:
-                bright_fg = False
-            elif p == 39:
-                base_fg, bright_fg = 7, False
-            elif p == 49:
-                base_bg = 0
-            elif 30 <= p <= 37:
-                base_fg = p - 30
-            elif 90 <= p <= 97:
-                base_fg, bright_fg = p - 90, True
-            elif 40 <= p <= 47:
-                base_bg = p - 40
-            elif 100 <= p <= 107:
-                base_bg = p - 100 + 8
-            changed = True
-        if changed:
-            close_span()
-            open_span()
-    tail = text[pos:]
-    if tail:
-        out.append(html_mod.escape(tail))
-    close_span()
-    return "".join(out)
+            parts.append("</span>")
+        out_lines.append("".join(parts))
+    return "\n".join(out_lines)
 
 
 def render_ans_file(path):
