@@ -781,7 +781,7 @@ async function sendInbox() {
   btn.disabled = true;
   btn.textContent = "Sending…";
   try {
-    const r = await fetch(`${API}/api/inbox`, {
+    const r = await fetch(`/api/inbox`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to_agent: inboxTarget, text }),
@@ -790,8 +790,15 @@ async function sendInbox() {
     if (d.ok) {
       ta.value = "";
       refreshInboxLog();
+    } else {
+      alert("Send failed: " + (d.message || "unknown error"));
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    // A silent catch here is why a cross-origin POST failure went
+    // unnoticed for days: the button looked like it worked and no row
+    // was ever written.
+    alert("Send failed: " + e);
+  }
   btn.disabled = false;
   btn.textContent = "Queue message";
 }
