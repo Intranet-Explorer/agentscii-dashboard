@@ -277,13 +277,23 @@ def fetch_status():
                 (agent,),
             ).fetchone()
             if row:
+                # last_event_at, not started_at: "last tick" was showing the
+                # shift START, so a long shift read as stalled -- a 70-minute
+                # artist shift displayed "last tick 1h ago" while its most
+                # recent event was 1 minute old (seen live 2026-09-23).
+                ev = conn.execute(
+                    "SELECT MAX(timestamp) FROM events WHERE shift_id=?",
+                    (row["id"],),
+                ).fetchone()[0]
                 out[agent] = {
                     "active": row["ended_at"] is None,
                     "shift_id": row["id"],
                     "started_at": row["started_at"],
+                    "last_event_at": ev or row["started_at"],
                 }
             else:
-                out[agent] = {"active": False, "shift_id": None, "started_at": None}
+                out[agent] = {"active": False, "shift_id": None,
+                              "started_at": None, "last_event_at": None}
         return out
     finally:
         conn.close()
@@ -482,6 +492,12 @@ def fetch_scratch():
     KNOWN_SUFFIXES = sorted([
         ".note.txt", ".critique.txt", ".credits.txt", ".scope.txt",
         ".done.txt", ".joint_shipped.txt", ".ans.bak", ".py.bak",
+        # .autosave.ans is the cap-handoff snapshot of a live canvas, not
+        # a separate piece. Without this it grouped as its own phantom --
+        # and since autosaves are the NEWEST files, every one of them
+        # outranked the real piece it came from, so the preview showed a
+        # different file than the one being worked on.
+        ".autosave.ans", ".autosave.asc", ".blockin.ans", ".spec.md",
     ], key=len, reverse=True)
 
     def base_of(name):

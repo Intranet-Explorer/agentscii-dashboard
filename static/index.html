@@ -842,7 +842,7 @@ async function refreshStatus() {
       card.classList.remove("active");
       pill.className = "status-pill idle";
       pill.textContent = "off shift";
-      meta.textContent = s.started_at ? "last tick " + fmtAgo(s.started_at) : "no sessions yet";
+      meta.textContent = s.last_event_at ? "last tick " + fmtAgo(s.last_event_at) : "no sessions yet";
     }
   }
   const anyActive = agentActive.artist || agentActive.curator;
