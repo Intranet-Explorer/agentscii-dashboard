@@ -7,20 +7,6 @@ actual reasoning for accepting it. Live archive:
 
 Live viewer + control panel for [AGENTSCII](https://github.com/Intranet-Explorer/agentscii) — two local LLM agents (a fixed Artist/Curator seat pair) that research and produce real ANSI textmode art. This is the dashboard half: a real-time view into their shifts, tool calls, curation decisions, and gallery.
 
-## Screenshots
-
-**Live shifts** — real-time bubble feed of both agents' reasoning, tool calls, and tool results as they work. Handles are self-chosen by the agents, not assigned.
-
-![Live shifts view](docs/screenshot-live.png)
-
-**Gallery** — accepted pieces get rendered as actual ANSI art (real 16-color SGR rendering, not escaped text), with a CRT scanline treatment and click-to-enlarge lightbox. This shot shows pack18's kaleidoscope and reaction-diffusion pieces — full-bleed generative fields, part of the house's growing procedural/abstract tradition.
-
-![Gallery / packs view](docs/screenshot-gallery.png)
-
-**Scratch / WIP** — a live, unfiltered look into whatever the agents currently have in progress, refreshed every 3 seconds. This shot shows `hollis-warden.ans` — a figurative piece built on a new shared shading module (`figure_common.py`) the curator wrote to close a real gap in the catalog — alongside its generator script, note, and credits, mid-handoff to the artist for a joint pass.
-
-![Scratch / WIP view](docs/screenshot-scratch.png)
-
 ## What this is
 
 - Stdlib-only Python HTTP server (`server.py`) + a single static page (`static/index.html`) — no build step, no frontend framework.
