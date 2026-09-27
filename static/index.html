@@ -726,7 +726,7 @@
 </div>
 
 <script>
-const API = "http://127.0.0.1:8766";
+const API = "";  // same-origin only; the server sends no CORS headers
 
 const renderState = {
   artist: { lastCount: 0 },
@@ -783,7 +783,7 @@ async function sendInbox() {
   try {
     const r = await fetch(`/api/inbox`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Agentscii": "1" },
       body: JSON.stringify({ to_agent: inboxTarget, text }),
     });
     const d = await r.json();
@@ -1232,14 +1232,14 @@ async function doControl(action) {
   msgEl.textContent = "working…";
   if (action === "restart-dashboard") {
     try {
-      await fetch(`${API}/api/control/restart-dashboard`, { method: "POST" });
+      await fetch(`${API}/api/control/restart-dashboard`, { method: "POST", headers: { "X-Agentscii": "1" } });
     } catch (e) { /* expected */ }
     msgEl.textContent = "dashboard restarting — page will reconnect in a few seconds";
     setTimeout(refreshControlStatus, 3000);
     return;
   }
   try {
-    const r = await fetch(`${API}/api/control/${action}`, { method: "POST" });
+    const r = await fetch(`${API}/api/control/${action}`, { method: "POST", headers: { "X-Agentscii": "1" } });
     const d = await r.json();
     msgEl.textContent = d.message || "done";
   } catch (e) {

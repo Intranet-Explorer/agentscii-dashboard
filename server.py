@@ -631,9 +631,48 @@ def restart_dashboard_server():
     threading.Thread(target=_do_restart, daemon=True).start()
 
 
+# --- Request origin checks (security fix, 2026-09-26) ----------------------
+# Binding to 127.0.0.1 does not stop a web page in the operator's browser
+# from reaching this server. Before this fix, any site could POST a
+# text/plain body to /api/inbox (no CORS preflight needed; the handler
+# parsed JSON regardless of Content-Type) and the text was delivered to a
+# shell-capable agent as "Messages from the operator"; /api/control/* could be
+# hit the same way, and `Access-Control-Allow-Origin: *` let any page read
+# every transcript. Now:
+#   * Host must be 127.0.0.1/localhost:PORT on every request (blocks DNS
+#     rebinding),
+#   * POST needs the custom X-Agentscii header -- a cross-site page cannot
+#     send it without a CORS preflight, and preflights are refused -- and,
+#     when the browser sends an Origin, it must be this dashboard,
+#   * no CORS headers at all: only same-origin pages can read responses.
+# Local scripts (curl) still work: add  -H 'X-Agentscii: 1'.
+ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def _reject(self, why):
+        body = json.dumps({"ok": False, "message": f"forbidden: {why}"}).encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _host_ok(self):
+        return (self.headers.get("Host") or "").strip().lower() in ALLOWED_HOSTS
+
+    def _post_ok(self):
+        if self.headers.get("X-Agentscii") != "1":
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin in ALLOWED_ORIGINS
+
+    def do_OPTIONS(self):
+        self._reject("cross-origin requests are not allowed")
 
     def log_message(self, fmt, *args):
         pass
@@ -642,12 +681,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         body = json.dumps(data, default=str).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self._host_ok():
+            self._reject("bad Host header")
+            return
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
 
@@ -743,6 +784,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        if not self._host_ok():
+            self._reject("bad Host header")
+            return
+        if not self._post_ok():
+            self._reject("missing X-Agentscii header or foreign Origin")
+            return
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/inbox":
