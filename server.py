@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """
-AGENTSCII live dashboard server.
-Forked from antfarm2-dashboard/server.py (SQLite live-view pattern, control
-endpoints, stdlib-only HTTP server are proven and reused). New here: a
-prompt-box endpoint that writes to human_messages (the inbox pattern,
-delivered at shift start, never interrupting live inference); a Gallery
-tab split into unpacked/ (accepted, pending release) and shipped packNN/
-releases with real FILE_ID.DIZ credits; a Submissions/Rejected view with
-contributor credits sidecars; self-chosen agent handles surfaced next
-to the functional artist/curator seat labels; a real ANSI-to-HTML
-renderer (SGR color codes -> styled spans, UTF-8/CP437-aware decoding)
-so pieces actually render as art instead of raw escaped text; and a
-live Scratch/WIP tab into workspace/scratch/ so in-progress pieces are
-visible while the agents are still working on them.
+AGENTSCII dashboard server. Stdlib only; based on antfarm2-dashboard.
+
+Serves the harness's sqlite log, the gallery (unpacked/ and shipped packNN/
+with FILE_ID.DIZ), submissions, rejects, live scratch/ WIP, and an inbox
+that queues operator messages for the next shift start. .ans/.asc files are
+rendered to HTML.
 """
 import sqlite3
 import json
@@ -45,14 +38,12 @@ AGENTS_MODEL = {
     "curator": "qwen3.8:27b-mlx",
 }
 
-PORT = 8766  # antfarm2-dashboard already owns 8765
+PORT = 8766  # antfarm2-dashboard uses 8765
 
 ANSI_EXTS = (".ans", ".asc")
 
-# Classic 16-color DOS/CGA-style palette, matching the convention every
-# generator script in this project already uses (c(fg,bg): fg/bg 0-7 normal,
-# 8-15 bright via the 90-97/100-107 SGR range) — not the xterm defaults,
-# which read too muted for BBS-style block art.
+# DOS/CGA 16-color palette: 0-7 normal, 8-15 bright (SGR 90-97/100-107).
+# Matches the generator scripts. xterm defaults are too muted for block art.
 PALETTE = [
     "#000000", "#aa0000", "#00aa00", "#aa5500",
     "#0000aa", "#aa00aa", "#00aaaa", "#aaaaaa",
@@ -66,9 +57,9 @@ _TERMINAL_WIDTH = 80
 
 
 def decode_ans_bytes(raw):
-    """.ans/.asc files in this project are UTF-8 (every generator script
-    writes real Unicode block chars), but real period pieces fetched from
-    16colo.rs are genuine CP437 — support both rather than assuming."""
+    """Decode UTF-8, falling back to CP437.
+
+    Generated pieces are UTF-8; period pieces from 16colo.rs are CP437."""
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -76,20 +67,12 @@ def decode_ans_bytes(raw):
 
 
 def ansi_to_html(text):
-    """Convert SGR-coded ANSI text into HTML: styled <span> runs, real
-    colors from PALETTE. Returns the inner HTML only — caller wraps it in
-    a <pre> with the right font/line-height.
+    """Render ANSI text to HTML <span> runs colored from PALETTE.
 
-    Real cursor-addressable grid model, not a flat left-to-right text scan.
-    Classic scene .ANS files (and this project's own
-    references/study/ corpus) routinely draw a base layer, then jump the
-    cursor BACK UP with ESC[A to layer highlights/shadows onto rows already
-    drawn. The old version here only understood SGR color codes and passed
-    every other escape sequence through unconsumed — cursor-repositioned
-    content didn't overwrite anything, it just got appended after in
-    linear order, visibly duplicating/misplacing content. This mirrors the
-    fix already made to harness.py's render_ans_to_png_b64 so both
-    renderers treat the same file the same way."""
+    Returns inner HTML; the caller wraps it in a <pre>. Draws onto an 80-col
+    cursor grid, since scene .ANS files move the cursor back (ESC[A etc.) to
+    layer over rows already drawn. Must match harness.py's
+    render_ans_to_png_b64."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
     grid = {}
@@ -98,10 +81,8 @@ def ansi_to_html(text):
     base_fg, bright_fg, base_bg = 7, False, 0
     pos = 0
     n = len(text)
-    pending_wrap = False  # deferred wrap, like a real terminal: filling the
-                          # last column doesn't advance the row until the
-                          # NEXT char is drawn -- avoids double-advancing on
-                          # an explicit \n right after a full-width line.
+    pending_wrap = False  # terminal-style deferred wrap: a full 80-col line
+                          # followed by \n advances one row, not two
 
     def put(ch):
         nonlocal col, row, max_row_seen, pending_wrap
@@ -175,7 +156,7 @@ def ansi_to_html(text):
                 pending_wrap = False
                 if row > max_row_seen:
                     max_row_seen = row
-            # any other CSI final byte (K, J, etc.) is consumed and ignored.
+            # other CSI sequences (K, J, ...) are consumed and ignored
             pos = m.end()
             continue
         put(ch)
@@ -187,8 +168,7 @@ def ansi_to_html(text):
         parts = []
         last_fg, last_bg = None, None
         span_open = False
-        # trim trailing default-styled blank cells so short rows don't pad
-        # the HTML with meaningless empty spans
+        # trim trailing default blanks
         last_col = -1
         for c in range(_TERMINAL_WIDTH):
             cell = grid.get((r, c))
@@ -229,7 +209,7 @@ def get_db():
 
 
 def get_db_rw():
-    """Write connection, only for endpoints that actually insert (inbox posts)."""
+    """Writable connection, for inbox posts only."""
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
@@ -277,10 +257,8 @@ def fetch_status():
                 (agent,),
             ).fetchone()
             if row:
-                # last_event_at, not started_at: "last tick" was showing the
-                # shift START, so a long shift read as stalled -- a 70-minute
-                # artist shift displayed "last tick 1h ago" while its most
-                # recent event was 1 minute old (seen live 2026-09-23).
+                # "last tick" uses the latest event, not shift start, so a
+                # long shift doesn't look stalled
                 ev = conn.execute(
                     "SELECT MAX(timestamp) FROM events WHERE shift_id=?",
                     (row["id"],),
@@ -458,15 +436,11 @@ def fetch_submissions():
 
 
 def _classify_scratch_file(name):
-    """Bucket a scratch/ filename so the dashboard can group by piece and
-    rank real WIP art above debug noise, instead of a flat alphabetical/
-    mtime dump of all ~450 files. Heuristic, not authoritative -- based on
-    the naming conventions the agents actually use (checked against the
-    real file list): .bak/.bak.* suffixes and pre_/pre-/prefix-style
-    version tags for superseded revisions, .err/.out for command-output
-    captures, .note/.critique/.credits/.scope/.DONE/.JOINT_SHIPPED for
-    sidecar metadata, .ans/.asc for actual art, everything else (mostly
-    generator .py scripts) as source."""
+    """Classify a scratch/ file as art, sidecar, debug or source.
+
+    Heuristic, from the agents' naming: .ans/.asc art; .note/.critique/
+    .credits/.scope/.done/.joint_shipped sidecars; .bak/.pre*/.err/.out
+    debug; everything else (mostly generator .py) source."""
     lower = name.lower()
     if lower.endswith((".ans", ".asc")):
         return "art"
@@ -479,24 +453,17 @@ def _classify_scratch_file(name):
 
 
 def fetch_scratch():
-    """Live view of scratch/ WIP, grouped by piece basename the same way
-    Unpacked/Submissions/Rejected already group a piece with its sidecars --
-    scratch never got that treatment before, so it rendered as a flat list
-    of ~450 files (generator scripts, stale .bak revisions, command-output
-    captures, and actual WIP art all equal weight, no way to tell which is
-    which at a glance). Groups by stripping the LONGEST known suffix (so
-    `_wharf_v6.ans.bak` groups under `_wharf_v6`, not a stray `_wharf_v6.ans`
-    bucket) and ranks each group's primary preview: newest .ans/.asc first,
-    falling back to newest of anything if a piece has no art yet."""
+    """scratch/ WIP grouped by piece, newest first.
+
+    Groups by stripping the longest known suffix, so `_wharf_v6.ans.bak`
+    lands under `_wharf_v6`. Each group's preview is its newest art file,
+    else its newest file."""
     files = _list_dir_files(SCRATCH_DIR, with_content=True)
     KNOWN_SUFFIXES = sorted([
         ".note.txt", ".critique.txt", ".credits.txt", ".scope.txt",
         ".done.txt", ".joint_shipped.txt", ".ans.bak", ".py.bak",
-        # .autosave.ans is the cap-handoff snapshot of a live canvas, not
-        # a separate piece. Without this it grouped as its own phantom --
-        # and since autosaves are the NEWEST files, every one of them
-        # outranked the real piece it came from, so the preview showed a
-        # different file than the one being worked on.
+        # autosaves are snapshots of a live canvas, not separate pieces;
+        # grouped as their own they'd outrank the real piece
         ".autosave.ans", ".autosave.asc", ".blockin.ans", ".spec.md",
     ], key=len, reverse=True)
 
@@ -505,9 +472,8 @@ def fetch_scratch():
         for suf in KNOWN_SUFFIXES:
             if lower.endswith(suf):
                 return name[: -len(suf)]
-        # generic .bak/.pre*/.err/.out and any other single extension:
-        # strip exactly one suffix so `_wharf.py` and `_wharf.ans` group
-        # together but a whole chain like `.ans.bak.py` isn't over-stripped
+        # otherwise strip one extension, so `_wharf.py` and `_wharf.ans`
+        # group together
         stem = Path(name).stem
         return stem
 
@@ -539,8 +505,7 @@ def fetch_scratch():
 
 
 def fetch_packs():
-    """List shipped pack releases: gallery/packNN/ dirs, each with a
-    FILE_ID.DIZ and its bundled pieces + sidecars."""
+    """Shipped packs: gallery/packNN/ with FILE_ID.DIZ, pieces and sidecars."""
     if not GALLERY_DIR.exists():
         return []
     packs = []
@@ -631,21 +596,14 @@ def restart_dashboard_server():
     threading.Thread(target=_do_restart, daemon=True).start()
 
 
-# --- Request origin checks (security fix, 2026-09-26) ----------------------
-# Binding to 127.0.0.1 does not stop a web page in the operator's browser
-# from reaching this server. Before this fix, any site could POST a
-# text/plain body to /api/inbox (no CORS preflight needed; the handler
-# parsed JSON regardless of Content-Type) and the text was delivered to a
-# shell-capable agent as "Messages from the operator"; /api/control/* could be
-# hit the same way, and `Access-Control-Allow-Origin: *` let any page read
-# every transcript. Now:
-#   * Host must be 127.0.0.1/localhost:PORT on every request (blocks DNS
-#     rebinding),
-#   * POST needs the custom X-Agentscii header -- a cross-site page cannot
-#     send it without a CORS preflight, and preflights are refused -- and,
-#     when the browser sends an Origin, it must be this dashboard,
-#   * no CORS headers at all: only same-origin pages can read responses.
-# Local scripts (curl) still work: add  -H 'X-Agentscii: 1'.
+# --- Request origin checks --------------------------------------------------
+# Binding to 127.0.0.1 doesn't stop a page in the browser from calling this
+# server, and /api/inbox text reaches a shell-capable agent.
+#   * Host must be 127.0.0.1/localhost:PORT (blocks DNS rebinding).
+#   * POST needs the X-Agentscii header, which forces a preflight, and
+#     preflights are refused. Origin must match when sent.
+#   * No CORS headers: only same-origin pages can read responses.
+# curl: add -H 'X-Agentscii: 1'.
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ALLOWED_ORIGINS = {f"http://{h}" for h in ALLOWED_HOSTS}
 

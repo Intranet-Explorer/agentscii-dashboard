@@ -488,8 +488,8 @@
   .piece-card.led-reject .piece-name::before { background: var(--reject); box-shadow: 0 0 5px var(--reject); }
   .piece-card .piece-meta { font-size: 9.5px; color: var(--muted); }
 
-  /* CRT monitor chrome around rendered art — scanlines + vignette + subtle flicker,
-     applied only to the screen surface so the real ANSI colors stay legible. */
+  /* CRT chrome around rendered art: scanlines, vignette, flicker. Screen
+     surface only, so the ANSI colors stay legible. */
   .crt-screen { position: relative; background: #05070a; overflow: hidden; animation: crtFlicker 7s infinite; }
   .crt-screen pre { position: relative; z-index: 1; background: transparent !important; }
   .crt-screen::before {
@@ -794,9 +794,7 @@ async function sendInbox() {
       alert("Send failed: " + (d.message || "unknown error"));
     }
   } catch (e) {
-    // A silent catch here is why a cross-origin POST failure went
-    // unnoticed for days: the button looked like it worked and no row
-    // was ever written.
+    // Don't fail silently: the button would look like it worked.
     alert("Send failed: " + e);
   }
   btn.disabled = false;
@@ -1044,7 +1042,7 @@ function renderPieceGrid(container, pieces, kind) {
     container.innerHTML = `<div class="empty">nothing here yet</div>`;
     return;
   }
-  lightboxPieces = []; // reset each render — stale entries' DOM nodes are gone anyway
+  lightboxPieces = []; // reset each render; old entries' nodes are gone
   container.innerHTML = pieces.map(p => {
     const sidecarClass = kind === "unpacked" || kind === "pack" ? "critique-accept" : kind === "rejected" ? "critique-reject" : "";
     const cardClass = kind === "unpacked" || kind === "pack" ? "led-accept" : kind === "rejected" ? "led-reject" : "";
@@ -1077,10 +1075,8 @@ function renderPieceGrid(container, pieces, kind) {
   }).join("");
 }
 
-// Lightbox: fullscreen viewer for a piece's rendered ANSI art. Rendered HTML
-// is stored in a lookup keyed by an incrementing id rather than embedded in
-// an onclick attribute directly — these strings can be tens of KB and contain
-// characters that would break naive attribute-escaping.
+// Lightbox: fullscreen viewer for rendered art. HTML is looked up by id, not
+// put in an onclick attribute; it can be tens of KB and break the escaping.
 let lightboxPieces = [];
 function registerLightboxPiece(name, html) {
   lightboxPieces.push({ name, html });
@@ -1131,9 +1127,7 @@ function renderScratchGroups(container, groups) {
     } else {
       bodyHtml = `<pre>${escapeHtml((p.content || '').slice(0, 4000) || '(binary or unreadable)')}</pre>`;
     }
-    // secondary members: everything in the group except the one shown as
-    // the primary preview, so a piece with 6 backup revisions doesn't
-    // repeat the same content 6 times — just names them, collapsed.
+    // the rest of the group, listed by name and collapsed
     const others = g.members.filter(m => m.path !== p.path);
     const kindLabel = k => k === "art" ? "art" : k === "sidecar" ? "note" : k === "debug" ? "old/debug" : "script";
     const othersHtml = others.length ? `
