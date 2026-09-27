@@ -2,3 +2,5 @@ restart.log
 dashboard_test*.log
 dashboard.log
 *.launchd.log
+
+*.log
