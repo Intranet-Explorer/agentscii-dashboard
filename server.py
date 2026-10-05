@@ -272,9 +272,57 @@ def fetch_status():
             else:
                 out[agent] = {"active": False, "shift_id": None,
                               "started_at": None, "last_event_at": None}
+        out["pending_review"] = _pending_review_count()
         return out
     finally:
         conn.close()
+
+
+PENDING_DIR = PROJECT_DIR / "workspace" / "pending"
+PENDING_NOTIFY_AT = 10
+_notify_state = PROJECT_DIR / "workspace" / ".pending_notified"
+
+
+def _pending_review_count():
+    """Pieces waiting on the operator's review, and a one-shot notification
+    when the batch is big enough to be worth sitting down to.
+
+    Fires once per crossing: the marker file holds the count it fired at, so
+    a batch that is reviewed and refills notifies again, but a steady 12
+    does not notify every poll.
+    """
+    try:
+        n = len([f for f in PENDING_DIR.glob("*.ans")])
+    except OSError:
+        return 0
+    try:
+        fired_at = int(_notify_state.read_text().strip() or 0)
+    except (OSError, ValueError):
+        fired_at = 0
+    if n >= PENDING_NOTIFY_AT and fired_at < PENDING_NOTIFY_AT:
+        _notify_macos(f"{n} pieces waiting for review",
+                      "agentscii: run review_sheet.py")
+        try:
+            _notify_state.write_text(str(n))
+        except OSError:
+            pass
+    elif n < PENDING_NOTIFY_AT and fired_at:
+        try:
+            _notify_state.unlink()        # re-arm for the next batch
+        except OSError:
+            pass
+    return n
+
+
+def _notify_macos(title, subtitle):
+    import subprocess
+    script = (f'display notification "{title}" with title "{subtitle}" '
+              f'sound name "Glass"')
+    try:
+        subprocess.run(["osascript", "-e", script], timeout=10,
+                       capture_output=True)
+    except (OSError, subprocess.SubprocessError):
+        pass                              # a missed notification is not fatal
 
 
 def fetch_handles():
@@ -689,6 +737,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             st = fetch_status()
             handles = fetch_handles()
             self._send_json({
+                **st,          # keep pending_review and anything else added later
                 "artist": {**st.get("artist", {}), "handle": handles.get("artist")},
                 "curator": {**st.get("curator", {}), "handle": handles.get("curator")},
             })

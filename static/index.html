@@ -635,6 +635,8 @@
   <div class="run-overview">
     <span class="label">Total shifts</span>
     <span class="value" id="run-total-shifts">–</span>
+    <span class="label" style="margin-top:8px;">Awaiting review</span>
+    <span class="value" id="run-pending-review">–</span>
   </div>
 </div>
 
@@ -820,6 +822,13 @@ async function refreshInboxLog() {
 
 async function refreshStatus() {
   const d = await fetchJSON("/api/status");
+  const pr = document.getElementById("run-pending-review");
+  if (pr) {
+    const n = d.pending_review ?? 0;
+    pr.textContent = n;
+    // 10 is the batch size worth sitting down to; the server notifies there too.
+    pr.style.color = n >= 10 ? "var(--accent, #e0a33a)" : "";
+  }
   for (const agent of ["artist","curator"]) {
     const s = d[agent] || {};
     agentActive[agent] = !!s.active;
