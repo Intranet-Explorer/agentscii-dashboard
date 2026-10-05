@@ -64,7 +64,8 @@ def main():
         out, priv = os.path.join(d, "reviews"), os.path.join(d, "private")
         for x in (pend, unp, out, priv, os.path.join(d, "workspace")):
             os.makedirs(x)
-        for name in ("_yes", "_no"):
+        names_all = ["_yes", "_no", "_skip"] + [f"_b{i}" for i in range(6)]
+        for name in names_all:
             open(os.path.join(pend, f"{name}.ans"), "w").write(PIECE)
             open(os.path.join(pend, f"{name}.ans.critique.txt"), "w").write("crit")
         db = os.path.join(d, "state.db")
@@ -79,15 +80,21 @@ def main():
         open(design, "w").write("x\n    FIRST DELIVERY: <not yet>\ny\n")
 
         names = ("ROOT", "PENDING", "UNPACKED", "OUT", "REVIEWS_MD", "PRIVATE",
-                 "BASELINE_MD", "DESIGN_TXT")
+                 "BASELINE_MD", "DESIGN_TXT", "REVIEWED")
         saved = {n: getattr(rs, n) for n in names}
         saved_db = harness.DB_PATH
         saved_hosts = (server.ALLOWED_HOSTS, server.ALLOWED_ORIGINS)
+        saved_srv = (server.PENDING_DIR, server._notify_state, server._notify_macos)
         httpd = socketserver.ThreadingTCPServer(("127.0.0.1", 0), server.Handler)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         try:
             rs.ROOT, rs.PENDING, rs.UNPACKED, rs.OUT = d, pend, unp, out
+            rev = rs.REVIEWED = os.path.join(d, "reviewed")
+            server.PENDING_DIR = harness.Path(pend)
+            server._notify_state = harness.Path(d) / ".pending_notified"
+            notes = []
+            server._notify_macos = lambda *a: notes.append(a)
             rs.REVIEWS_MD = os.path.join(d, "workspace", "REVIEWS.md")
             rs.PRIVATE, rs.BASELINE_MD, rs.DESIGN_TXT = priv, os.path.join(priv, "b.md"), design
             harness.DB_PATH = harness.Path(db)
@@ -95,9 +102,12 @@ def main():
             server.ALLOWED_HOSTS = {f"127.0.0.1:{port}", f"localhost:{port}"}
             server.ALLOWED_ORIGINS = {f"http://{h}" for h in server.ALLOWED_HOSTS}
 
-            ans = [{"file": "_yes.ans", "reads": True, "good": True, "publish": True, "note": "clean"},
-                   {"file": "_no.ans", "reads": True, "good": False, "publish": False,
-                    "note": "reads, shading is mush"}]
+            no = {"file": "_no.ans", "reads": True, "good": False, "publish": False,
+                  "note": "reads, shading is mush"}
+            ans = ([{"file": "_yes.ans", "reads": True, "good": True, "publish": True, "note": "clean"}, no,
+                    {"file": "_skip.ans", "reads": None, "good": None, "publish": None, "note": ""}]
+                   + [{"file": f"_b{i}.ans", "reads": False, "good": False, "publish": False, "note": ""}
+                      for i in range(6)])          # 8 answered + 1 skipped
 
             # --- refusals: nothing may move or be written --------------
             for label, kw in [("no X-Agentscii", dict(header=False)),
@@ -107,14 +117,14 @@ def main():
                 assert code == 403, f"{label}: got {code} {body[:100]}"
             code, _ = _req(port, "/review", host=f"evil.example:{port}")
             assert code == 403, f"GET /review foreign Host: {code}"
-            assert sorted(os.listdir(pend)) == ["_no.ans", "_no.ans.critique.txt",
-                                                "_yes.ans", "_yes.ans.critique.txt"]
+            assert len(os.listdir(pend)) == 18
             assert not os.listdir(out), "a refused POST saved answers"
             print("  ok  POST without header / foreign Host / foreign Origin -> 403, nothing moved")
 
             # --- page ----------------------------------------------------
             code, page = _req(port, "/review")
             assert code == 200 and "_yes.ans" in page and "Save &amp; apply" in page, page[:200]
+            assert '{"pending": true, "min": 8}' in page, "baseline guard state not in page"
             assert "/api/review/apply" in page and "X-Agentscii" in page
             print("  ok  GET /review serves the sheet with Save & apply")
 
@@ -126,14 +136,28 @@ def main():
             assert not os.listdir(out), "refused answers were saved"
             print("  ok  answers naming a path outside pending/ are refused, nothing saved")
 
+            # --- small first delivery refused at the server, no override --
+            code, body = _req(port, "/api/review/apply", ans[:2])
+            r = json.loads(body)
+            assert not r["ok"] and "BASELINE_TOO_SMALL" in r["message"] and "with 2 " in r["message"], body
+            code, body = _req(port, "/api/review/apply", ans[:2] + [{"force": True}])
+            assert not json.loads(body)["ok"], "dashboard accepted an override"
+            assert len(os.listdir(pend)) == 18 and not os.listdir(out), "refused apply moved/saved"
+            print("  ok  first delivery under 8 refused by the server (2 reviewed), nothing moved")
+
+            assert server._pending_review_count() == 9
             # --- apply ---------------------------------------------------
             code, body = _req(port, "/api/review/apply", ans)
             r = json.loads(body)
             assert code == 200 and r["ok"], body
             assert os.path.exists(os.path.join(unp, "_yes.ans"))
             assert os.path.exists(os.path.join(unp, "_yes.ans.critique.txt")), "sidecar left behind"
-            assert os.path.exists(os.path.join(pend, "_no.ans")), "unapproved piece moved"
+            assert sorted(os.listdir(pend)) == ["_skip.ans", "_skip.ans.critique.txt"], os.listdir(pend)
             assert not os.path.exists(os.path.join(unp, "_no.ans"))
+            assert os.path.exists(os.path.join(rev, "_no.ans.critique.txt")), "sidecar not in reviewed/"
+            assert json.load(open(os.path.join(rev, "_no.ans.review.json"))) == no
+            assert len([f for f in os.listdir(rev) if f.endswith(".ans")]) == 7
+            assert server._pending_review_count() == 1, "pending count includes reviewed pieces"
             saved_files = sorted(f for f in os.listdir(out) if f.endswith(".json"))
             assert len(saved_files) == 1 and json.load(open(os.path.join(out, saved_files[0]))) == ans
             c = sqlite3.connect(db)
@@ -142,23 +166,29 @@ def main():
             c.close()
             assert {x[0] for x in rows} == {"artist", "curator"}, rows
             assert all("reads, shading is mush" in x[1] for x in rows), "note not verbatim"
-            assert ev == [("publish_approved", "_yes.ans")], ev
+            assert ev[0] == ("publish_approved", "_yes.ans") and len(ev) == 8 and \
+                {e[0] for e in ev[1:]} == {"review_not_published"}, ev
             assert "reads, shading is mush" in open(rs.REVIEWS_MD).read()
             text = open(design).read()
             assert f"FIRST DELIVERY: {rows[0][2]:.6f}" in text, text
-            print(f"  ok  apply: 1 published + sidecar, 1 held, 2 seats messaged, "
+            print(f"  ok  apply: 1 -> unpacked, 7 -> reviewed/ with answers, 1 unanswered stays, "
+                  f"pending count 9 -> 1, 2 seats messaged, "
                   f"answers in {saved_files[0]}, first delivery {rows[0][2]:.6f} recorded")
 
-            # --- second apply: answers not overwritten, timestamp kept ---
+            # --- second apply: under 8 is fine now, timestamp kept --------
+            code, page = _req(port, "/review")
+            assert '{"pending": false, "min": 8}' in page
             code, body = _req(port, "/api/review/apply",
-                              [{"file": "_no.ans", "reads": False, "good": False,
+                              [{"file": "_skip.ans", "reads": False, "good": False,
                                 "publish": False, "note": "second"}])
             assert json.loads(body)["ok"], body
+            assert server._pending_review_count() == 0
             assert open(design).read() == text, "first delivery timestamp was overwritten"
             assert len([f for f in os.listdir(out) if f.endswith(".json")]) == 2
-            print("  ok  second apply keeps the first timestamp and a separate answers file")
+            print("  ok  later apply of 1 piece allowed, keeps the first timestamp, separate answers file")
 
             # --- CLI path still works on the same functions --------------
+            open(os.path.join(pend, "_cli.ans"), "w").write(PIECE)
             rs.build()
             assert any(f.endswith(".html") for f in os.listdir(out)), "CLI build wrote no sheet"
             print("  ok  CLI build still writes the sheet")
@@ -168,6 +198,7 @@ def main():
                 setattr(rs, n, v)
             harness.DB_PATH = saved_db
             server.ALLOWED_HOSTS, server.ALLOWED_ORIGINS = saved_hosts
+            server.PENDING_DIR, server._notify_state, server._notify_macos = saved_srv
     after = _live_snapshot()
     assert after == before, f"LIVE STATE CHANGED: {before} -> {after}"
     print("  ok  live state.db, EXPERIMENT_DESIGN.txt and pending/ untouched")

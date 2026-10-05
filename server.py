@@ -284,7 +284,7 @@ _notify_state = PROJECT_DIR / "workspace" / ".pending_notified"
 
 
 def _pending_review_count():
-    """Pieces waiting on the operator's review, and a one-shot notification
+    """Unreviewed pieces (reviewing moves a piece out of pending/), and a one-shot notification
     when the batch is big enough to be worth sitting down to.
 
     Fires once per crossing: the marker file holds the count it fired at, so
@@ -671,6 +671,7 @@ def review_apply(answers):
     rs = _review_sheet()
     try:
         rs.check_answers(answers)
+        rs.check_baseline(answers)          # no override from the dashboard
     except ValueError as e:
         return {"ok": False, "message": str(e)}
     if not _review_lock.acquire(blocking=False):
