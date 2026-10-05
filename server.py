@@ -644,6 +644,52 @@ def restart_dashboard_server():
     threading.Thread(target=_do_restart, daemon=True).start()
 
 
+# --- operator review (review_sheet.py in the harness repo) -------------
+
+_review_lock = threading.Lock()
+
+
+def _review_sheet():
+    import sys
+    if str(PROJECT_DIR) not in sys.path:
+        sys.path.insert(0, str(PROJECT_DIR))
+    import review_sheet
+    return review_sheet
+
+
+def review_page():
+    html, _n = _review_sheet().page_html()
+    return html or ("<!doctype html><meta charset='utf-8'><title>AGENTSCII review</title>"
+                    "<p>Nothing waiting in workspace/pending/.</p>")
+
+
+def review_apply(answers):
+    """Save answers to workspace/reviews/<date>.json, then run the same
+    apply() as `review_sheet.py --apply` on that file."""
+    import contextlib
+    import io
+    rs = _review_sheet()
+    try:
+        rs.check_answers(answers)
+    except ValueError as e:
+        return {"ok": False, "message": str(e)}
+    if not _review_lock.acquire(blocking=False):
+        return {"ok": False, "message": "an apply is already running"}
+    try:
+        path = rs.save_answers(answers)
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                moved = rs.apply(path)
+        except Exception as e:
+            return {"ok": False, "message": f"{type(e).__name__}: {e} (answers saved to {path})",
+                    "log": out.getvalue()}
+        return {"ok": True, "message": f"{moved} published; answers saved to {path}",
+                "log": out.getvalue()}
+    finally:
+        _review_lock.release()
+
+
 # --- Request origin checks --------------------------------------------------
 # Binding to 127.0.0.1 doesn't stop a page in the browser from calling this
 # server, and /api/inbox text reaches a shell-capable agent.
@@ -683,10 +729,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    def _send_json(self, data):
-        body = json.dumps(data, default=str).encode()
+    def _send_json(self, data, ctype="application/json"):
+        body = data.encode() if ctype.startswith("text/") else json.dumps(data, default=str).encode()
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -788,6 +834,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._send_json(control_status())
             return
 
+        if parsed.path == "/review":
+            self._send_json(review_page(), ctype="text/html; charset=utf-8")
+            return
+
         super().do_GET()
 
     def do_POST(self):
@@ -808,6 +858,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 data = {}
             result = post_human_message(data.get("to_agent", "both"), data.get("text", ""))
             self._send_json(result)
+            return
+
+        if parsed.path == "/api/review/apply":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length) if length else b"null")
+            except Exception:
+                data = None
+            self._send_json(review_apply(data))
             return
 
         if parsed.path == "/api/control/start":
