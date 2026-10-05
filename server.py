@@ -657,18 +657,39 @@ def _review_sheet():
     return review_sheet
 
 
-def review_page():
-    html, _n = _review_sheet().page_html()
-    return html or ("<!doctype html><meta charset='utf-8'><title>AGENTSCII review</title>"
-                    "<p>Nothing waiting in workspace/pending/.</p>")
+def review_page(set_name=None):
+    rs = _review_sheet()
+    if set_name:
+        return rs.set_page_html(set_name)
+    html, _n = rs.page_html()
+    links = " ".join(f'<a href="/review?set={n}">{n}</a>' for n in rs.list_sets())
+    nav = f"<p style='font:13px sans-serif;color:#8a8a92'>Review sets: {links or 'none'}</p>"
+    if not html:
+        return ("<!doctype html><meta charset='utf-8'><title>AGENTSCII review</title>"
+                "<body style='background:#0b0b0d;color:#d8d8dc;font:14px sans-serif;padding:32px'>"
+                f"<p>Nothing waiting in workspace/pending/.</p>{nav}")
+    return html.replace('<div id="cards">', nav + '<div id="cards">', 1)
 
 
-def review_apply(answers):
+def review_apply(answers, set_name=None):
     """Save answers to workspace/reviews/<date>.json, then run the same
-    apply() as `review_sheet.py --apply` on that file."""
+    apply() as `review_sheet.py --apply` on that file. With set_name, run
+    apply_set() instead (records answers in the set; moves nothing)."""
     import contextlib
     import io
     rs = _review_sheet()
+    if set_name:
+        if not _review_lock.acquire(blocking=False):
+            return {"ok": False, "message": "an apply is already running"}
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                n = rs.apply_set(set_name, answers)    # no override from the dashboard
+            return {"ok": True, "message": f"set {set_name}: {n} answers recorded", "log": out.getvalue()}
+        except (ValueError, OSError) as e:
+            return {"ok": False, "message": str(e), "log": out.getvalue()}
+        finally:
+            _review_lock.release()
     try:
         rs.check_answers(answers)
         rs.check_baseline(answers)          # no override from the dashboard
@@ -836,7 +857,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/review":
-            self._send_json(review_page(), ctype="text/html; charset=utf-8")
+            try:
+                page = review_page(qs.get("set", [None])[0])
+            except (ValueError, OSError) as e:
+                page = f"<!doctype html><meta charset='utf-8'><p>{html_mod.escape(str(e))}</p>"
+            self._send_json(page, ctype="text/html; charset=utf-8")
             return
 
         super().do_GET()
@@ -867,7 +892,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length) if length else b"null")
             except Exception:
                 data = None
-            self._send_json(review_apply(data))
+            self._send_json(review_apply(data, parse_qs(parsed.query).get("set", [None])[0]))
             return
 
         if parsed.path == "/api/control/start":

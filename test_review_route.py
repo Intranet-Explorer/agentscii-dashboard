@@ -80,7 +80,7 @@ def main():
         open(design, "w").write("x\n    FIRST DELIVERY: <not yet>\ny\n")
 
         names = ("ROOT", "PENDING", "UNPACKED", "OUT", "REVIEWS_MD", "PRIVATE",
-                 "BASELINE_MD", "DESIGN_TXT", "REVIEWED")
+                 "BASELINE_MD", "DESIGN_TXT", "REVIEWED", "SETS_DIR")
         saved = {n: getattr(rs, n) for n in names}
         saved_db = harness.DB_PATH
         saved_hosts = (server.ALLOWED_HOSTS, server.ALLOWED_ORIGINS)
@@ -91,6 +91,7 @@ def main():
         try:
             rs.ROOT, rs.PENDING, rs.UNPACKED, rs.OUT = d, pend, unp, out
             rev = rs.REVIEWED = os.path.join(d, "reviewed")
+            sets = rs.SETS_DIR = os.path.join(priv, "review_sets")
             server.PENDING_DIR = harness.Path(pend)
             server._notify_state = harness.Path(d) / ".pending_notified"
             notes = []
@@ -135,6 +136,67 @@ def main():
             assert os.path.exists(os.path.join(pend, "_yes.ans"))
             assert not os.listdir(out), "refused answers were saved"
             print("  ok  answers naming a path outside pending/ are refused, nothing saved")
+
+            # --- review sets: move nothing, hide provenance, deliver once ---
+            os.makedirs(sets)
+            gal = os.path.join(d, "gal"); os.makedirs(gal)
+            for i in range(9):
+                open(os.path.join(gal, f"_s{i}.ans"), "w").write(PIECE)
+            snap = lambda: sorted((r, f) for r, _, fs in os.walk(d) for f in fs
+                                  if not r.startswith(sets) and not r.startswith(out))
+            json.dump({"mode": "benchmark", "deliver": False, "cards": [
+                {"id": "x1", "path": os.path.join(gal, "_s0.ans"), "slug": "_s0", "model": "opus-5-5"},
+                {"id": "x2", "path": os.path.join(gal, "_s1.ans"), "slug": "_s1", "model": "qwen"}]},
+                open(os.path.join(sets, "bench.json"), "w"))
+            json.dump({"mode": "backlog", "deliver": True, "cards": [
+                {"id": f"b{i}", "path": os.path.join(gal, f"_s{i}.ans"), "slug": f"_s{i}"}
+                for i in range(9)]}, open(os.path.join(sets, "backlog.json"), "w"))
+            code, page = _req(port, "/review")
+            assert 'href="/review?set=backlog"' in page and 'href="/review?set=bench"' in page
+            code, page = _req(port, "/review?set=bench")
+            assert code == 200 and "Save &amp; apply" in page, page[:300]
+            for hidden in ("opus", "qwen", "model", gal, "_s0.ans"):
+                assert hidden not in page, f"review page leaks {hidden!r}"
+            assert '"/api/review/apply?set=bench"' in page
+            before_files = snap()
+            code, body = _req(port, "/api/review/apply?set=bench",
+                              [{"id": "x1", "reads": True, "good": True, "publish": False, "note": "n1"},
+                               {"id": "x2", "reads": False, "good": False, "publish": False, "note": ""}])
+            assert json.loads(body)["ok"], body
+            c = sqlite3.connect(db)
+            assert c.execute("SELECT COUNT(*) FROM human_messages").fetchone()[0] == 0, \
+                "a deliver:false set messaged the agents"
+            c.close()
+            assert "<not yet>" in open(design).read(), "deliver:false set recorded a first delivery"
+            rec = json.load(open(os.path.join(sets, "bench.answers.json")))
+            assert rec[0]["model"] == "opus-5-5" and rec[0]["note"] == "n1", rec
+            code, body = _req(port, "/api/review/apply?set=bench", [{"id": "x1", "reads": True}])
+            assert "already applied" in json.loads(body)["message"], body
+            code, body = _req(port, "/api/review/apply?set=backlog", [{"id": "nope", "reads": True}])
+            assert "not in set" in json.loads(body)["message"], body
+            code, body = _req(port, "/api/review/apply?set=../x", [])
+            assert not json.loads(body)["ok"], body
+            code, body = _req(port, "/api/review/apply?set=backlog",
+                              [{"id": f"b{i}", "reads": True, "good": False, "publish": False, "note": ""}
+                               for i in range(3)])
+            assert "BASELINE_TOO_SMALL" in json.loads(body)["message"], body
+            code, body = _req(port, "/api/review/apply?set=backlog",
+                              [{"id": f"b{i}", "reads": i % 2 == 0, "good": False, "publish": True,
+                                "note": "backlog note" if i == 0 else ""} for i in range(9)])
+            assert json.loads(body)["ok"], body
+            moved = set(snap()) ^ set(before_files)
+            # The delivery itself writes REVIEWS.md and EXPERIMENT_DESIGN.txt; nothing else.
+            assert {f for _, f in moved} <= {"REVIEWS.md", "EXPERIMENT_DESIGN.txt"}, moved
+            c = sqlite3.connect(db)
+            rows = c.execute("SELECT to_agent, text, timestamp FROM human_messages").fetchall()
+            c.execute("DELETE FROM human_messages"); c.commit(); c.close()
+            assert {r[0] for r in rows} == {"artist", "curator"} and "backlog note" in rows[0][1]
+            assert "_s8" in rows[0][1] and f"FIRST DELIVERY: {rows[0][2]:.6f}" in open(design).read()
+            assert os.path.exists(os.path.join(unp)) and not os.listdir(unp), "publish=yes in a set published"
+            print("  ok  sets: provenance hidden from the page, deliver:false sends nothing, "
+                  "backlog set delivers 9 to both seats + records FIRST DELIVERY, moves nothing, "
+                  "re-apply / foreign ids / bad name refused")
+            open(design, "w").write("x\n    FIRST DELIVERY: <not yet>\ny\n")   # reset for the pending tests
 
             # --- small first delivery refused at the server, no override --
             code, body = _req(port, "/api/review/apply", ans[:2])
