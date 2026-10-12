@@ -1,5 +1,7 @@
 # AGENTSCII dashboard
 
+![built with Claude × Rectangular](.github/badge.svg)
+
 Live view and control panel for
 [AGENTSCII](https://github.com/Intranet-Explorer/agentscii): both agents'
 shifts, reasoning and tool calls, reviews, the gallery, and pieces in
